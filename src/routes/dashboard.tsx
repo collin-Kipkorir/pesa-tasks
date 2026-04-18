@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Smartphone, Menu, Wallet, AlertTriangle } from "lucide-react";
+import { Smartphone, Menu, Wallet, AlertTriangle, Crown, Zap, Wifi, Lightbulb, ShoppingCart, Bus, Heart, GraduationCap, Lock } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
+import { useState as useStateReact } from "react";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
