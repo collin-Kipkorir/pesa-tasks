@@ -2,17 +2,20 @@ import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Phone, Lock } from "lucide-react";
-import loginIllustration from "@/assets/login-illustration.png";
+import { User, Mail, Phone, Lock } from "lucide-react";
+import signupIllustration from "@/assets/signup-illustration.png";
 
-export const Route = createFileRoute("/login")({
+export const Route = createFileRoute("/signup")({
   head: () => ({
     meta: [
-      { title: "Log in — Pesatask" },
-      { name: "description", content: "Log in to your Pesatask account." },
+      { title: "Sign up — Pesatask" },
+      {
+        name: "description",
+        content: "Create your Pesatask account and start earning M-Pesa cash today.",
+      },
     ],
   }),
-  component: LoginPage,
+  component: SignupPage,
 });
 
 function FloatingInput({
@@ -53,21 +56,22 @@ function FloatingInput({
   );
 }
 
-function LoginPage() {
+function SignupPage() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Illustration banner */}
       <div
         className="flex h-64 items-end justify-center pb-2"
         style={{ background: "var(--gradient-hero)" }}
       >
         <img
-          src={loginIllustration}
-          alt="Person earning rewards on a laptop"
+          src={signupIllustration}
+          alt="Happy person holding cash"
           width={768}
           height={512}
           className="h-56 w-auto object-contain"
@@ -75,9 +79,9 @@ function LoginPage() {
       </div>
 
       <main className="mx-auto w-full max-w-xl px-6 pt-10 pb-16">
-        <h1 className="text-center text-2xl font-bold">Welcome Back</h1>
+        <h1 className="text-center text-2xl font-bold">Create Your Account</h1>
         <p className="mt-2 text-center text-sm text-muted-foreground">
-          Log in and continue your journey 🚀
+          Join us today and start earning rewards instantly 🚀
         </p>
 
         <form
@@ -87,9 +91,18 @@ function LoginPage() {
             navigate({ to: "/dashboard" });
           }}
         >
+          <FloatingInput id="name" label="Full Name" value={name} onChange={setName} icon={User} />
+          <FloatingInput
+            id="email"
+            label="Email Address"
+            type="email"
+            value={email}
+            onChange={setEmail}
+            icon={Mail}
+          />
           <FloatingInput
             id="phone"
-            label="Phone Number (e.g., 0712345678)"
+            label="Phone Number (e.g., 0712345678 or 254712345678)"
             type="tel"
             value={phone}
             onChange={setPhone}
@@ -105,16 +118,16 @@ function LoginPage() {
           />
 
           <Button type="submit" variant="hero" size="xl" className="w-full">
-            Login
+            Sign Up
           </Button>
           <Button
             type="button"
             variant="hero"
             size="xl"
             className="w-full"
-            onClick={() => navigate({ to: "/signup" })}
+            onClick={() => navigate({ to: "/login" })}
           >
-            New here? Create an account
+            Already have an account? Login
           </Button>
         </form>
 
