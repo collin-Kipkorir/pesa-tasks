@@ -1,15 +1,8 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import {
-  Smartphone,
-  Menu,
-  Wallet,
-  Home as HomeIcon,
-  Gift,
-  User,
-  AlertTriangle,
-} from "lucide-react";
+import { Smartphone, Menu, Wallet, AlertTriangle } from "lucide-react";
+import { BottomNav } from "@/components/BottomNav";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -176,15 +169,7 @@ function Dashboard() {
         </div>
       </main>
 
-      {/* Bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-card">
-        <div className="mx-auto grid max-w-3xl grid-cols-4">
-          <NavItem icon={HomeIcon} label="Home" active />
-          <NavItem icon={Gift} label="Rewards" />
-          <NavItem icon={Wallet} label="Wallet" />
-          <NavItem icon={User} label="Profile" />
-        </div>
-      </nav>
+      <BottomNav />
     </div>
   );
 }
@@ -198,23 +183,3 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NavItem({
-  icon: Icon,
-  label,
-  active,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  active?: boolean;
-}) {
-  return (
-    <button
-      className={`flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
-        active ? "text-primary" : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      <Icon className="h-5 w-5" />
-      {label}
-    </button>
-  );
-}

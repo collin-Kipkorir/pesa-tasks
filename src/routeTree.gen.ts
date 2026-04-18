@@ -9,14 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WalletRouteImport } from './routes/wallet'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as RewardsRouteImport } from './routes/rewards'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WalletRoute = WalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RewardsRoute = RewardsRouteImport.update({
+  id: '/rewards',
+  path: '/rewards',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -39,43 +57,98 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/profile': typeof ProfileRoute
+  '/rewards': typeof RewardsRoute
   '/signup': typeof SignupRoute
+  '/wallet': typeof WalletRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/profile': typeof ProfileRoute
+  '/rewards': typeof RewardsRoute
   '/signup': typeof SignupRoute
+  '/wallet': typeof WalletRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/profile': typeof ProfileRoute
+  '/rewards': typeof RewardsRoute
   '/signup': typeof SignupRoute
+  '/wallet': typeof WalletRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/login' | '/signup'
+  fullPaths:
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/profile'
+    | '/rewards'
+    | '/signup'
+    | '/wallet'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/login' | '/signup'
-  id: '__root__' | '/' | '/dashboard' | '/login' | '/signup'
+  to:
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/profile'
+    | '/rewards'
+    | '/signup'
+    | '/wallet'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/login'
+    | '/profile'
+    | '/rewards'
+    | '/signup'
+    | '/wallet'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  ProfileRoute: typeof ProfileRoute
+  RewardsRoute: typeof RewardsRoute
   SignupRoute: typeof SignupRoute
+  WalletRoute: typeof WalletRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/wallet': {
+      id: '/wallet'
+      path: '/wallet'
+      fullPath: '/wallet'
+      preLoaderRoute: typeof WalletRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/rewards': {
+      id: '/rewards'
+      path: '/rewards'
+      fullPath: '/rewards'
+      preLoaderRoute: typeof RewardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -106,7 +179,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  ProfileRoute: ProfileRoute,
+  RewardsRoute: RewardsRoute,
   SignupRoute: SignupRoute,
+  WalletRoute: WalletRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
