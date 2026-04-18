@@ -89,6 +89,7 @@
   --ring: oklch(0.5 0.15 145);
   --hero-bg: oklch(0.95 0.06 145);
   --gradient-cta: linear-gradient(135deg, var(--primary-deep), var(--primary));
+  --gradient-vip: linear-gradient(90deg, oklch(0.85 0.18 90), oklch(0.75 0.2 140));
   --gradient-hero: linear-gradient(180deg, var(--hero-bg), oklch(0.98 0.02 145));
   --shadow-cta: 0 10px 30px -10px color-mix(in oklab, var(--primary) 50%, transparent);
   --shadow-card: 0 4px 20px -8px color-mix(in oklab, var(--primary) 25%, transparent);
