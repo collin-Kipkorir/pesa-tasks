@@ -1,9 +1,26 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Smartphone, Menu, Wallet, AlertTriangle, Crown, Zap, Wifi, Lightbulb, ShoppingCart, Bus, Heart, GraduationCap, Lock } from "lucide-react";
+import {
+  Smartphone,
+  Menu,
+  Wallet,
+  AlertTriangle,
+  Crown,
+  Zap,
+  Wifi,
+  Lightbulb,
+  Lock,
+} from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
-import { useState as useStateReact } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
@@ -12,13 +29,24 @@ export const Route = createFileRoute("/dashboard")({
   component: Dashboard,
 });
 
-const tasks = [
+type Task = {
+  title: string;
+  description: string;
+  reward: number;
+  duration: string;
+  questions: number;
+  icon: typeof Smartphone;
+  locked?: boolean;
+};
+
+const tasks: Task[] = [
   {
     title: "Safaricom Services Quiz Part 1",
     description: "Survey your experience with Safaricom M-Pesa, airtime, and data bundles.",
     reward: 100,
     duration: "5 mins",
     questions: 15,
+    icon: Smartphone,
   },
   {
     title: "Safaricom Services Quiz Part 2",
@@ -26,6 +54,7 @@ const tasks = [
     reward: 150,
     duration: "6 mins",
     questions: 18,
+    icon: Smartphone,
   },
   {
     title: "Mobile Banking Habits",
@@ -33,13 +62,34 @@ const tasks = [
     reward: 200,
     duration: "8 mins",
     questions: 20,
+    icon: Smartphone,
   },
   {
-    title: "Boda & Ride-hailing Survey",
-    description: "Share your experience with boda boda and ride apps.",
+    title: "Electricity Connection Quiz",
+    description: "Survey on rural electrification and KPLC new connections.",
+    reward: 75,
+    duration: "10 mins",
+    questions: 9,
+    icon: Zap,
+    locked: true,
+  },
+  {
+    title: "Internet & Data Survey",
+    description: "Feedback on fiber internet, bundles, and providers.",
+    reward: 100,
+    duration: "14 mins",
+    questions: 10,
+    icon: Wifi,
+    locked: true,
+  },
+  {
+    title: "Women Empowerment Quiz",
+    description: "Share your views on gender equality and women in business.",
     reward: 120,
-    duration: "5 mins",
-    questions: 12,
+    duration: "12 mins",
+    questions: 11,
+    icon: Lightbulb,
+    locked: true,
   },
 ];
 
@@ -71,6 +121,8 @@ function LivePayoutTicker() {
 }
 
 function Dashboard() {
+  const [unlockTask, setUnlockTask] = useState<Task | null>(null);
+
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
       {/* Header */}
@@ -140,35 +192,111 @@ function Dashboard() {
 
         {/* Task cards */}
         <div className="mt-4 space-y-4">
-          {tasks.map((t, i) => (
-            <article
-              key={i}
-              className="overflow-hidden rounded-2xl border bg-card shadow-sm"
-            >
-              <header
-                className="flex items-center gap-3 px-5 py-4 text-primary-foreground"
-                style={{ background: "var(--gradient-cta)" }}
+          {tasks.map((t, i) => {
+            const Icon = t.icon;
+            return (
+              <article
+                key={i}
+                className="overflow-hidden rounded-2xl border bg-card shadow-sm"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                  <Smartphone className="h-5 w-5" />
+                <header
+                  className="flex items-center gap-3 px-5 py-4 text-primary-foreground"
+                  style={{ background: "var(--gradient-cta)" }}
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="flex-1 text-base font-semibold">{t.title}</h3>
+                  {t.locked && (
+                    <Crown
+                      className="h-5 w-5 shrink-0 text-yellow-300 drop-shadow"
+                      aria-label="VIP locked"
+                    />
+                  )}
+                </header>
+                <div className="p-5">
+                  <p className="text-sm text-muted-foreground">{t.description}</p>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    <Stat label="Reward" value={`KES ${t.reward}`} />
+                    <Stat label="Duration" value={t.duration} />
+                    <Stat label="Questions" value={String(t.questions)} />
+                  </div>
+                  {t.locked ? (
+                    <button
+                      onClick={() => setUnlockTask(t)}
+                      className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[image:var(--gradient-vip)] text-base font-semibold text-primary-foreground shadow-[var(--shadow-cta)] transition-all hover:brightness-110"
+                    >
+                      <Lock className="h-4 w-4" />
+                      Unlock with VIP
+                    </button>
+                  ) : (
+                    <Button variant="hero" size="lg" className="mt-4 w-full">
+                      Start Task
+                    </Button>
+                  )}
                 </div>
-                <h3 className="text-base font-semibold">{t.title}</h3>
-              </header>
-              <div className="p-5">
-                <p className="text-sm text-muted-foreground">{t.description}</p>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <Stat label="Reward" value={`KES ${t.reward}`} />
-                  <Stat label="Duration" value={t.duration} />
-                  <Stat label="Questions" value={String(t.questions)} />
-                </div>
-                <Button variant="hero" size="lg" className="mt-4 w-full">
-                  Start Task
-                </Button>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </main>
+
+      {/* VIP Unlock Dialog */}
+      <Dialog open={!!unlockTask} onOpenChange={(o) => !o && setUnlockTask(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[image:var(--gradient-vip)] text-primary-foreground shadow-[var(--shadow-cta)]">
+              <Crown className="h-7 w-7" />
+            </div>
+            <DialogTitle className="text-center text-xl">Unlock VIP Surveys</DialogTitle>
+            <DialogDescription className="text-center">
+              Activate VIP to access <span className="font-semibold text-foreground">{unlockTask?.title}</span> and all premium high-paying surveys.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-xl border bg-muted/40 p-4">
+            <ul className="space-y-2 text-sm">
+              <li className="flex items-start gap-2">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                Unlock all premium surveys instantly
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                Earn up to KES 3,350 per task
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                Instant M-Pesa withdrawals, no waiting
+              </li>
+            </ul>
+            <div className="mt-4 flex items-end justify-between rounded-lg bg-card p-3">
+              <div>
+                <p className="text-xs text-muted-foreground">One-time activation</p>
+                <p className="text-2xl font-bold">KES 250</p>
+              </div>
+              <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary">
+                Lifetime VIP
+              </span>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <button
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[image:var(--gradient-vip)] text-base font-semibold text-primary-foreground shadow-[var(--shadow-cta)] transition-all hover:brightness-110"
+              onClick={() => setUnlockTask(null)}
+            >
+              <Lock className="h-4 w-4" />
+              Pay KES 250 with M-Pesa
+            </button>
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setUnlockTask(null)}
+            >
+              Maybe later
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <BottomNav />
     </div>
@@ -183,4 +311,3 @@ function Stat({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
