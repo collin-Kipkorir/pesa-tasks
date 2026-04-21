@@ -11,20 +11,18 @@ if (!globalThis.__payheroStatus) globalThis.__payheroStatus = new Map();
 export const Route = createFileRoute("/api/payhero/status")({
   server: {
     handlers: {
-      GET: async ({ request }) => {
+      GET: async ({ request }: { request: Request }) => {
         const url = new URL(request.url);
         const reference = url.searchParams.get("reference");
         if (!reference) {
           return Response.json({ status: "ERROR", message: "Missing reference" }, { status: 400 });
         }
 
-        // Check cached callback result first
         const cached = globalThis.__payheroStatus!.get(reference);
         if (cached && (cached.status === "SUCCESS" || cached.status === "FAILED" || cached.status === "CANCELLED")) {
           return Response.json({ status: cached.status, message: cached.message });
         }
 
-        // Otherwise query PayHero directly
         try {
           const auth = process.env.PAYHERO_AUTH_TOKEN;
           const res = await fetch(
@@ -51,4 +49,4 @@ export const Route = createFileRoute("/api/payhero/status")({
       },
     },
   },
-});
+} as never);

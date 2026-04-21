@@ -16,7 +16,7 @@ if (!globalThis.__payheroStatus) globalThis.__payheroStatus = statusMap;
 export const Route = createFileRoute("/api/payhero/initiate")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      POST: async ({ request }: { request: Request }) => {
         try {
           const body = (await request.json()) as {
             amount: number;
@@ -31,7 +31,6 @@ export const Route = createFileRoute("/api/payhero/initiate")({
             return Response.json({ success: false, error: "PayHero not configured" }, { status: 500 });
           }
 
-          // Build callback URL from request origin
           const origin = new URL(request.url).origin;
           const callbackUrl = `${origin}/api/payhero/callback`;
           const externalReference = `${body.purpose.toUpperCase()}-${body.userPhone}-${Date.now()}`;
@@ -90,4 +89,4 @@ export const Route = createFileRoute("/api/payhero/initiate")({
       },
     },
   },
-});
+} as never);

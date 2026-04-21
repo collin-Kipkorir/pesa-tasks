@@ -9,7 +9,7 @@ if (!globalThis.__payheroStatus) globalThis.__payheroStatus = new Map();
 export const Route = createFileRoute("/api/payhero/callback")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      POST: async ({ request }: { request: Request }) => {
         try {
           const body = (await request.json()) as {
             response?: {
@@ -25,9 +25,6 @@ export const Route = createFileRoute("/api/payhero/callback")({
           const r = body.response;
           if (!r) return Response.json({ ok: true });
 
-          // We can't reliably map CheckoutRequestID -> reference here without storage,
-          // but the client also polls /status which will query PayHero directly.
-          // Cache by ExternalReference as a fallback key.
           const refKey = r.CheckoutRequestID || r.ExternalReference || "";
           if (refKey) {
             const success = r.ResultCode === 0 || r.Status === "Success";
@@ -43,4 +40,4 @@ export const Route = createFileRoute("/api/payhero/callback")({
       },
     },
   },
-});
+} as never);
