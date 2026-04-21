@@ -15,7 +15,12 @@ import { Route as RewardsRouteImport } from './routes/rewards'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TaskIdRouteImport } from './routes/task.$id'
+import { Route as ApiPayheroStatusRouteImport } from './routes/api.payhero.status'
+import { Route as ApiPayheroInitiateRouteImport } from './routes/api.payhero.initiate'
+import { Route as ApiPayheroCallbackRouteImport } from './routes/api.payhero.callback'
 
 const WalletRoute = WalletRouteImport.update({
   id: '/wallet',
@@ -47,78 +52,138 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TaskIdRoute = TaskIdRouteImport.update({
+  id: '/task/$id',
+  path: '/task/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPayheroStatusRoute = ApiPayheroStatusRouteImport.update({
+  id: '/api/payhero/status',
+  path: '/api/payhero/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPayheroInitiateRoute = ApiPayheroInitiateRouteImport.update({
+  id: '/api/payhero/initiate',
+  path: '/api/payhero/initiate',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPayheroCallbackRoute = ApiPayheroCallbackRouteImport.update({
+  id: '/api/payhero/callback',
+  path: '/api/payhero/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/rewards': typeof RewardsRoute
   '/signup': typeof SignupRoute
   '/wallet': typeof WalletRoute
+  '/task/$id': typeof TaskIdRoute
+  '/api/payhero/callback': typeof ApiPayheroCallbackRoute
+  '/api/payhero/initiate': typeof ApiPayheroInitiateRoute
+  '/api/payhero/status': typeof ApiPayheroStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/rewards': typeof RewardsRoute
   '/signup': typeof SignupRoute
   '/wallet': typeof WalletRoute
+  '/task/$id': typeof TaskIdRoute
+  '/api/payhero/callback': typeof ApiPayheroCallbackRoute
+  '/api/payhero/initiate': typeof ApiPayheroInitiateRoute
+  '/api/payhero/status': typeof ApiPayheroStatusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/profile': typeof ProfileRoute
   '/rewards': typeof RewardsRoute
   '/signup': typeof SignupRoute
   '/wallet': typeof WalletRoute
+  '/task/$id': typeof TaskIdRoute
+  '/api/payhero/callback': typeof ApiPayheroCallbackRoute
+  '/api/payhero/initiate': typeof ApiPayheroInitiateRoute
+  '/api/payhero/status': typeof ApiPayheroStatusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/dashboard'
     | '/login'
     | '/profile'
     | '/rewards'
     | '/signup'
     | '/wallet'
+    | '/task/$id'
+    | '/api/payhero/callback'
+    | '/api/payhero/initiate'
+    | '/api/payhero/status'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/dashboard'
     | '/login'
     | '/profile'
     | '/rewards'
     | '/signup'
     | '/wallet'
+    | '/task/$id'
+    | '/api/payhero/callback'
+    | '/api/payhero/initiate'
+    | '/api/payhero/status'
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/dashboard'
     | '/login'
     | '/profile'
     | '/rewards'
     | '/signup'
     | '/wallet'
+    | '/task/$id'
+    | '/api/payhero/callback'
+    | '/api/payhero/initiate'
+    | '/api/payhero/status'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
   ProfileRoute: typeof ProfileRoute
   RewardsRoute: typeof RewardsRoute
   SignupRoute: typeof SignupRoute
   WalletRoute: typeof WalletRoute
+  TaskIdRoute: typeof TaskIdRoute
+  ApiPayheroCallbackRoute: typeof ApiPayheroCallbackRoute
+  ApiPayheroInitiateRoute: typeof ApiPayheroInitiateRoute
+  ApiPayheroStatusRoute: typeof ApiPayheroStatusRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -165,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -172,17 +244,50 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/task/$id': {
+      id: '/task/$id'
+      path: '/task/$id'
+      fullPath: '/task/$id'
+      preLoaderRoute: typeof TaskIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/payhero/status': {
+      id: '/api/payhero/status'
+      path: '/api/payhero/status'
+      fullPath: '/api/payhero/status'
+      preLoaderRoute: typeof ApiPayheroStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/payhero/initiate': {
+      id: '/api/payhero/initiate'
+      path: '/api/payhero/initiate'
+      fullPath: '/api/payhero/initiate'
+      preLoaderRoute: typeof ApiPayheroInitiateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/payhero/callback': {
+      id: '/api/payhero/callback'
+      path: '/api/payhero/callback'
+      fullPath: '/api/payhero/callback'
+      preLoaderRoute: typeof ApiPayheroCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
   ProfileRoute: ProfileRoute,
   RewardsRoute: RewardsRoute,
   SignupRoute: SignupRoute,
   WalletRoute: WalletRoute,
+  TaskIdRoute: TaskIdRoute,
+  ApiPayheroCallbackRoute: ApiPayheroCallbackRoute,
+  ApiPayheroInitiateRoute: ApiPayheroInitiateRoute,
+  ApiPayheroStatusRoute: ApiPayheroStatusRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
