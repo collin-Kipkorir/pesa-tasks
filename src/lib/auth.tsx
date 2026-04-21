@@ -21,6 +21,10 @@ export type UserRecord = {
   welcomeClaimed: boolean;
   createdAt: number;
   role?: "admin" | "user";
+  // dynamic Firebase children — populated as user uses the app
+  rewards?: Record<string, { amount: number; source: string; date: number; type: string }>;
+  withdrawals?: Record<string, { amount: number; date: number; status: string }>;
+  completed?: Record<string, { date: number; amount: number; title: string }>;
 };
 
 type AuthCtx = {
