@@ -2,7 +2,8 @@ import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Phone, Lock } from "lucide-react";
+import { Phone, Lock, Loader2 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 import loginIllustration from "@/assets/login-illustration.png";
 
 export const Route = createFileRoute("/login")({
@@ -32,10 +33,7 @@ function FloatingInput({
 }) {
   return (
     <div className="relative rounded-md border border-input bg-background px-3 pt-5 pb-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
-      <label
-        htmlFor={id}
-        className="absolute left-3 top-1.5 text-xs text-muted-foreground"
-      >
+      <label htmlFor={id} className="absolute left-3 top-1.5 text-xs text-muted-foreground">
         {label}
       </label>
       <div className="flex items-center gap-2">
@@ -56,15 +54,28 @@ function FloatingInput({
 function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      await login(phone, password);
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Illustration banner */}
-      <div
-        className="flex h-64 items-end justify-center pb-2"
-        style={{ background: "var(--gradient-hero)" }}
-      >
+      <div className="flex h-64 items-end justify-center pb-2" style={{ background: "var(--gradient-hero)" }}>
         <img
           src={loginIllustration}
           alt="Person earning rewards on a laptop"
@@ -80,13 +91,7 @@ function LoginPage() {
           Log in and continue your journey 🚀
         </p>
 
-        <form
-          className="mt-8 space-y-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            navigate({ to: "/dashboard" });
-          }}
-        >
+        <form className="mt-8 space-y-5" onSubmit={submit}>
           <FloatingInput
             id="phone"
             label="Phone Number (e.g., 0712345678)"
@@ -103,9 +108,14 @@ function LoginPage() {
             onChange={setPassword}
             icon={Lock}
           />
+          {error && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
 
-          <Button type="submit" variant="hero" size="xl" className="w-full">
-            Login
+          <Button type="submit" variant="hero" size="xl" className="w-full" disabled={loading}>
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Login"}
           </Button>
           <Button
             type="button"
