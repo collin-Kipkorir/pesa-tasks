@@ -68,11 +68,16 @@ export const Route = createFileRoute("/api/payhero/initiate")({
             );
           }
 
-          globalThis.__payheroStatus!.set(data.reference, {
+          const meta = {
             status: "PENDING",
             purpose: body.purpose,
             userPhone: body.userPhone,
-          });
+          } as const;
+          // Track every possible key the callback might use to match.
+          globalThis.__payheroStatus!.set(data.reference, { ...meta });
+          if (data.CheckoutRequestID)
+            globalThis.__payheroStatus!.set(data.CheckoutRequestID, { ...meta });
+          globalThis.__payheroStatus!.set(externalReference, { ...meta });
 
           return Response.json({
             success: true,
