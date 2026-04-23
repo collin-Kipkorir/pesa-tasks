@@ -40,9 +40,9 @@ export function getPendingBalance(phone: string): number {
   return getPending(phone).reduce((s, o) => s + o.amount, 0);
 }
 
-export function getPendingCompleted(phone: string): Record<string, true> {
-  const out: Record<string, true> = {};
-  for (const o of getPending(phone)) if (o.kind === "survey") out[o.surveyId] = true;
+export function getPendingCompleted(phone: string): Record<string, { date: number }> {
+  const out: Record<string, { date: number }> = {};
+  for (const o of getPending(phone)) if (o.kind === "survey") out[o.surveyId] = { date: o.createdAt };
   return out;
 }
 
