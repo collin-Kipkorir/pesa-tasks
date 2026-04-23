@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Phone, Lock, Loader2 } from "lucide-react";
@@ -128,11 +128,6 @@ function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-8 text-center text-xs text-muted-foreground">
-          <Link to="/" className="hover:text-foreground">
-            ← Back to home
-          </Link>
-        </p>
       </main>
     </div>
   );

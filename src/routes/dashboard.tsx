@@ -12,6 +12,7 @@ import {
   Lightbulb,
   Lock,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -19,8 +20,9 @@ import { WelcomeBonusDialog } from "@/components/WelcomeBonusDialog";
 import { PaymentDialog } from "@/components/PaymentDialog";
 import { useAuth } from "@/lib/auth";
 import { useSurveys } from "@/lib/use-surveys";
-import { ACTIVATION_FEE, VIP_FEE } from "@/lib/firebase";
+import { ACTIVATION_FEE, VIP_FEE, DAILY_FREE_LIMIT, DAILY_VIP_LIMIT } from "@/lib/firebase";
 import type { Survey } from "@/lib/surveys-seed";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Pesatask Paid Surveys" }] }),
@@ -72,10 +74,35 @@ function Dashboard() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
 
-  const completed = (user?.completed || {}) as Record<string, unknown>;
+  const completed = (user?.completed || {}) as Record<string, { date?: number }>;
+
+  // Count today's completions per category
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const dayStart = startOfDay.getTime();
+  let freeToday = 0;
+  let vipToday = 0;
+  for (const s of surveys) {
+    const c = completed[s.id];
+    if (!c?.date || c.date < dayStart) continue;
+    if (s.category === "vip") vipToday += 1;
+    else freeToday += 1;
+  }
+  const dailyLimit = user?.vip ? DAILY_VIP_LIMIT : DAILY_FREE_LIMIT;
+  const todayCount = user?.vip ? vipToday + freeToday : freeToday;
+  const dailyLimitHit = todayCount >= dailyLimit;
+
   const startTask = (s: Survey) => {
     if (s.category === "vip" && !user?.vip) {
       setUnlockOpen(true);
+      return;
+    }
+    if (dailyLimitHit) {
+      toast.error(
+        user?.vip
+          ? `Daily limit reached: ${DAILY_VIP_LIMIT} surveys per day. Come back tomorrow!`
+          : `Free users can complete ${DAILY_FREE_LIMIT} surveys per day. Unlock VIP for ${DAILY_VIP_LIMIT}/day.`,
+      );
       return;
     }
     navigate({ to: "/task/$id", params: { id: s.id } });
@@ -156,54 +183,120 @@ function Dashboard() {
           </Button>
         </div>
 
-        <div className="mt-8">
-          <h2 className="text-2xl font-bold">Earn Real Money</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Complete surveys & quizzes to earn up to KES 3,350 per task
-          </p>
+        <div className="mt-8 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold">Earn Real Money</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Complete surveys & quizzes to earn up to KES 3,350 per task
+            </p>
+          </div>
+          <div className="shrink-0 rounded-full border bg-card px-3 py-1 text-[11px] font-semibold">
+            <span className={dailyLimitHit ? "text-destructive" : "text-foreground"}>
+              {todayCount}/{dailyLimit}
+            </span>
+            <span className="ml-1 text-muted-foreground">today</span>
+          </div>
         </div>
 
         <div className="mt-4 space-y-4">
           {loading && <p className="text-sm text-muted-foreground">Loading surveys...</p>}
           {surveys.map((t) => {
             const Icon = ICON_MAP[t.icon] || Smartphone;
-            const isVipLocked = t.category === "vip" && !user?.vip;
+            const isVip = t.category === "vip";
+            const isVipLocked = isVip && !user?.vip;
             const isCompleted = !!completed[t.id];
             return (
-              <article key={t.id} className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+              <article
+                key={t.id}
+                className={
+                  isVip
+                    ? "relative overflow-hidden rounded-2xl border border-[color:var(--vip-gold)]/40 shadow-[var(--shadow-vip)]"
+                    : "overflow-hidden rounded-2xl border bg-card shadow-sm"
+                }
+                style={isVip ? { background: "var(--gradient-vip-premium)" } : undefined}
+              >
+                {isVip && (
+                  <>
+                    {/* Subtle gold shimmer overlay */}
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 opacity-30"
+                      style={{
+                        background:
+                          "radial-gradient(80% 60% at 100% 0%, color-mix(in oklab, var(--vip-gold) 35%, transparent), transparent 60%)",
+                      }}
+                    />
+                    {/* Gold top border */}
+                    <div
+                      aria-hidden
+                      className="absolute inset-x-0 top-0 h-[2px]"
+                      style={{ background: "var(--gradient-vip-gold)" }}
+                    />
+                  </>
+                )}
+
                 <header
-                  className="flex items-center gap-3 px-5 py-4 text-primary-foreground"
-                  style={{ background: "var(--gradient-cta)" }}
+                  className={`relative flex items-center gap-3 px-5 py-4 ${
+                    isVip ? "text-white" : "text-primary-foreground"
+                  }`}
+                  style={
+                    isVip ? undefined : { background: "var(--gradient-cta)" }
+                  }
                 >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                    <Icon className="h-5 w-5" />
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      isVip ? "" : "bg-white/20"
+                    }`}
+                    style={
+                      isVip
+                        ? { background: "var(--gradient-vip-gold)", boxShadow: "0 4px 12px -2px color-mix(in oklab, var(--vip-gold) 50%, transparent)" }
+                        : undefined
+                    }
+                  >
+                    <Icon className={`h-5 w-5 ${isVip ? "text-[color:var(--vip-bg-2)]" : ""}`} />
                   </div>
                   <h3 className="flex-1 text-base font-semibold">{t.title}</h3>
-                  {t.category === "vip" && (
-                    <Crown
-                      className="h-5 w-5 shrink-0 text-yellow-300 drop-shadow"
-                      aria-label="VIP locked"
-                    />
+                  {isVip && (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[color:var(--vip-bg-2)]"
+                      style={{ background: "var(--gradient-vip-gold)" }}
+                    >
+                      <Crown className="h-3 w-3" /> VIP
+                    </span>
                   )}
                 </header>
-                <div className="p-5">
-                  <p className="text-sm text-muted-foreground">{t.description}</p>
+
+                <div className={`relative p-5 ${isVip ? "" : ""}`}>
+                  <p className={`text-sm ${isVip ? "text-white/80" : "text-muted-foreground"}`}>
+                    {t.description}
+                  </p>
                   <div className="mt-4 grid grid-cols-3 gap-3">
-                    <Stat label="Reward" value={`KES ${t.reward}`} />
-                    <Stat label="Duration" value={t.duration} />
-                    <Stat label="Questions" value={String(t.questions.length)} />
+                    <Stat label="Reward" value={`KES ${t.reward}`} premium={isVip} />
+                    <Stat label="Duration" value={t.duration} premium={isVip} />
+                    <Stat label="Questions" value={String(t.questions.length)} premium={isVip} />
                   </div>
                   {isCompleted ? (
-                    <div className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-muted text-sm font-semibold text-muted-foreground">
-                      <CheckCircle2 className="h-4 w-4 text-primary" /> Completed
+                    <div className={`mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md text-sm font-semibold ${
+                      isVip ? "bg-white/10 text-white/80" : "bg-muted text-muted-foreground"
+                    }`}>
+                      <CheckCircle2 className={`h-4 w-4 ${isVip ? "text-[color:var(--vip-gold)]" : "text-primary"}`} /> Completed
                     </div>
                   ) : isVipLocked ? (
                     <button
                       onClick={() => setUnlockOpen(true)}
-                      className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[image:var(--gradient-vip)] text-base font-semibold text-primary-foreground shadow-[var(--shadow-cta)] transition-all hover:brightness-110"
+                      className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md text-base font-bold text-[color:var(--vip-bg-2)] shadow-[0_8px_24px_-8px_color-mix(in_oklab,var(--vip-gold)_60%,transparent)] transition-all hover:brightness-110"
+                      style={{ background: "var(--gradient-vip-gold)" }}
                     >
                       <Lock className="h-4 w-4" />
                       Unlock with VIP
+                    </button>
+                  ) : isVip ? (
+                    <button
+                      onClick={() => startTask(t)}
+                      className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-md text-base font-bold text-[color:var(--vip-bg-2)] shadow-[0_8px_24px_-8px_color-mix(in_oklab,var(--vip-gold)_60%,transparent)] transition-all hover:brightness-110"
+                      style={{ background: "var(--gradient-vip-gold)" }}
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Start Premium Task
                     </button>
                   ) : (
                     <Button
@@ -241,11 +334,11 @@ function Dashboard() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, premium = false }: { label: string; value: string; premium?: boolean }) {
   return (
-    <div className="rounded-lg bg-muted/60 px-3 py-2 text-center">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="text-sm font-bold">{value}</p>
+    <div className={`rounded-lg px-3 py-2 text-center ${premium ? "bg-white/10 text-white" : "bg-muted/60"}`}>
+      <p className={`text-[11px] ${premium ? "text-white/60" : "text-muted-foreground"}`}>{label}</p>
+      <p className={`text-sm font-bold ${premium ? "text-[color:var(--vip-gold)]" : ""}`}>{value}</p>
     </div>
   );
 }
