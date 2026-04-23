@@ -90,9 +90,17 @@
   --hero-bg: oklch(0.95 0.06 145);
   --gradient-cta: linear-gradient(135deg, var(--primary-deep), var(--primary));
   --gradient-vip: linear-gradient(90deg, oklch(0.85 0.18 90), oklch(0.75 0.2 140));
+  /* Premium VIP card: deep midnight + royal gold accent */
+  --vip-bg: oklch(0.22 0.04 280);
+  --vip-bg-2: oklch(0.16 0.05 285);
+  --vip-gold: oklch(0.84 0.17 88);
+  --vip-gold-deep: oklch(0.7 0.16 75);
+  --gradient-vip-premium: linear-gradient(135deg, var(--vip-bg-2) 0%, var(--vip-bg) 60%, oklch(0.28 0.08 290) 100%);
+  --gradient-vip-gold: linear-gradient(135deg, var(--vip-gold), var(--vip-gold-deep));
   --gradient-hero: linear-gradient(180deg, var(--hero-bg), oklch(0.98 0.02 145));
   --shadow-cta: 0 10px 30px -10px color-mix(in oklab, var(--primary) 50%, transparent);
   --shadow-card: 0 4px 20px -8px color-mix(in oklab, var(--primary) 25%, transparent);
+  --shadow-vip: 0 18px 40px -16px color-mix(in oklab, var(--vip-gold) 55%, transparent), 0 2px 0 0 color-mix(in oklab, var(--vip-gold) 30%, transparent) inset;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
