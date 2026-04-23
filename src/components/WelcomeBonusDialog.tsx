@@ -8,13 +8,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Gift, Sparkles, PartyPopper } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { claimWelcomeBonus } from "@/lib/userdb";
+import { enqueueWelcome } from "@/lib/sync-queue";
 import { WELCOME_BONUS } from "@/lib/firebase";
 
 export function WelcomeBonusDialog() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [claiming, setClaiming] = useState(false);
   const [claimed, setClaimed] = useState(false);
 
   useEffect(() => {
@@ -24,22 +23,17 @@ export function WelcomeBonusDialog() {
 
   if (!user) return null;
 
-  const onClaim = async () => {
-    setClaiming(true);
-    try {
-      await claimWelcomeBonus(user.phone);
-      setClaimed(true);
-      setTimeout(() => setOpen(false), 1500);
-    } finally {
-      setClaiming(false);
-    }
+  const onClaim = () => {
+    // Optimistically credit locally; background sync writes to Firebase.
+    enqueueWelcome(user.phone);
+    setClaimed(true);
+    setTimeout(() => setOpen(false), 1500);
   };
 
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        // Cannot dismiss until claimed
         if (!o && !claimed) return;
         setOpen(o);
       }}
@@ -50,7 +44,6 @@ export function WelcomeBonusDialog() {
         onPointerDownOutside={(e) => !claimed && e.preventDefault()}
       >
         <div className="relative bg-[image:var(--gradient-cta)] px-6 pt-10 pb-8 text-center text-primary-foreground">
-          {/* floating sparkles */}
           <Sparkles className="absolute left-6 top-6 h-5 w-5 animate-pulse text-yellow-200" />
           <Sparkles className="absolute right-8 top-12 h-4 w-4 animate-pulse text-yellow-100 [animation-delay:300ms]" />
           <Sparkles className="absolute left-10 bottom-6 h-3 w-3 animate-pulse text-white [animation-delay:600ms]" />
@@ -88,10 +81,10 @@ export function WelcomeBonusDialog() {
             variant="hero"
             size="xl"
             className="w-full"
-            disabled={claiming || claimed}
+            disabled={claimed}
             onClick={onClaim}
           >
-            {claimed ? "Claimed ✓" : claiming ? "Claiming..." : `Claim KES ${WELCOME_BONUS}`}
+            {claimed ? "Claimed ✓" : `Claim KES ${WELCOME_BONUS}`}
           </Button>
         </div>
       </DialogContent>
