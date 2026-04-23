@@ -334,11 +334,11 @@ function Dashboard() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, premium = false }: { label: string; value: string; premium?: boolean }) {
   return (
-    <div className="rounded-lg bg-muted/60 px-3 py-2 text-center">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="text-sm font-bold">{value}</p>
+    <div className={`rounded-lg px-3 py-2 text-center ${premium ? "bg-white/10 text-white" : "bg-muted/60"}`}>
+      <p className={`text-[11px] ${premium ? "text-white/60" : "text-muted-foreground"}`}>{label}</p>
+      <p className={`text-sm font-bold ${premium ? "text-[color:var(--vip-gold)]" : ""}`}>{value}</p>
     </div>
   );
 }
