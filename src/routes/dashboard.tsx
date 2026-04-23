@@ -74,10 +74,35 @@ function Dashboard() {
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [activateOpen, setActivateOpen] = useState(false);
 
-  const completed = (user?.completed || {}) as Record<string, unknown>;
+  const completed = (user?.completed || {}) as Record<string, { date?: number }>;
+
+  // Count today's completions per category
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const dayStart = startOfDay.getTime();
+  let freeToday = 0;
+  let vipToday = 0;
+  for (const s of surveys) {
+    const c = completed[s.id];
+    if (!c?.date || c.date < dayStart) continue;
+    if (s.category === "vip") vipToday += 1;
+    else freeToday += 1;
+  }
+  const dailyLimit = user?.vip ? DAILY_VIP_LIMIT : DAILY_FREE_LIMIT;
+  const todayCount = user?.vip ? vipToday + freeToday : freeToday;
+  const dailyLimitHit = todayCount >= dailyLimit;
+
   const startTask = (s: Survey) => {
     if (s.category === "vip" && !user?.vip) {
       setUnlockOpen(true);
+      return;
+    }
+    if (dailyLimitHit) {
+      toast.error(
+        user?.vip
+          ? `Daily limit reached: ${DAILY_VIP_LIMIT} surveys per day. Come back tomorrow!`
+          : `Free users can complete ${DAILY_FREE_LIMIT} surveys per day. Unlock VIP for ${DAILY_VIP_LIMIT}/day.`,
+      );
       return;
     }
     navigate({ to: "/task/$id", params: { id: s.id } });
