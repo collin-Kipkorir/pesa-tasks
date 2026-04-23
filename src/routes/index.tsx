@@ -1,9 +1,7 @@
-import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import heroImg from "@/assets/hero-earner.png";
 import mpesaLogo from "@/assets/mpesa-logo.png";
 import { Button } from "@/components/ui/button";
-import { SignupDialog } from "@/components/SignupDialog";
 import { ShieldCheck, Users, Wallet } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -26,7 +24,6 @@ export const Route = createFileRoute("/")({
 });
 
 function Landing() {
-  const [open, setOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -72,12 +69,12 @@ function Landing() {
 
         <div className="mt-8">
           <Button
+            asChild
             variant="hero"
             size="xl"
             className="w-full max-w-md"
-            onClick={() => setOpen(true)}
           >
-            Get Started
+            <Link to="/login">Get Started</Link>
           </Button>
         </div>
 
@@ -144,7 +141,7 @@ function Landing() {
         © {new Date().getFullYear()} Pesatask. All rights reserved.
       </footer>
 
-      <SignupDialog open={open} onOpenChange={setOpen} />
+      
     </div>
   );
 }
