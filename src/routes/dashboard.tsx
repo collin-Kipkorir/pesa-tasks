@@ -12,6 +12,7 @@ import {
   Lightbulb,
   Lock,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -19,8 +20,9 @@ import { WelcomeBonusDialog } from "@/components/WelcomeBonusDialog";
 import { PaymentDialog } from "@/components/PaymentDialog";
 import { useAuth } from "@/lib/auth";
 import { useSurveys } from "@/lib/use-surveys";
-import { ACTIVATION_FEE, VIP_FEE } from "@/lib/firebase";
+import { ACTIVATION_FEE, VIP_FEE, DAILY_FREE_LIMIT, DAILY_VIP_LIMIT } from "@/lib/firebase";
 import type { Survey } from "@/lib/surveys-seed";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Pesatask Paid Surveys" }] }),
