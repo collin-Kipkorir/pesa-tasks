@@ -153,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           balance: (rawUser.balance || 0) + pendingBal,
           welcomeClaimed: rawUser.welcomeClaimed || pendingWelcome,
           completed: { ...(rawUser.completed || {}), ...Object.fromEntries(
-            Object.keys(pendingDone).map((id) => [id, { date: Date.now(), amount: 0, title: "" }]),
+            Object.entries(pendingDone).map(([id, v]) => [id, { date: v.date, amount: 0, title: "" }]),
           ) },
         };
       })()
