@@ -30,6 +30,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string>("");
   const [reference, setReference] = useState<string>("");
+  const [externalReference, setExternalReference] = useState<string>("");
   const pollRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       setStatus("idle");
       setMessage("");
       setReference("");
+      setExternalReference("");
     }
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
@@ -73,34 +75,46 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         return;
       }
       setReference(data.reference);
+      setExternalReference(data.externalReference || "");
       setStatus("waiting");
-      setMessage("Check your phone and enter your M-Pesa PIN to complete payment.");
-      // Poll status every 4s, up to ~2 minutes
+      setMessage("Check your phone and enter your M-Pesa PIN to authorize the payment.");
+
+      // Poll up to ~3 minutes. We will ONLY mark the user as activated/VIP after
+      // PayHero confirms M-Pesa authorization (SUCCESS).
       let attempts = 0;
+      const refs = [data.reference, data.externalReference].filter(Boolean) as string[];
       pollRef.current = window.setInterval(async () => {
         attempts += 1;
         try {
-          const sres = await fetch(`/api/payhero/status?reference=${encodeURIComponent(data.reference)}`);
-          const sdata = await sres.json();
-          if (sdata.status === "SUCCESS") {
+          let final: { status: string; message?: string } | null = null;
+          for (const r of refs) {
+            const sres = await fetch(`/api/payhero/status?reference=${encodeURIComponent(r)}`);
+            const sdata = await sres.json();
+            if (sdata.status === "SUCCESS" || sdata.status === "FAILED" || sdata.status === "CANCELLED") {
+              final = sdata;
+              break;
+            }
+          }
+          if (final?.status === "SUCCESS") {
             window.clearInterval(pollRef.current!);
+            // Only now do we unlock the feature.
             if (purpose === "activation") await markActivated(user.phone);
             else await markVip(user.phone);
             setStatus("success");
-            setMessage("Payment confirmed!");
+            setMessage("M-Pesa payment confirmed!");
             setTimeout(() => onOpenChange(false), 1800);
-          } else if (sdata.status === "FAILED" || sdata.status === "CANCELLED") {
+          } else if (final?.status === "FAILED" || final?.status === "CANCELLED") {
             window.clearInterval(pollRef.current!);
             setStatus("failed");
-            setMessage(sdata.message || "Payment was not completed.");
+            setMessage(final.message || "Payment was not completed on M-Pesa.");
           }
         } catch {
           // ignore transient errors
         }
-        if (attempts > 30) {
+        if (attempts > 45) {
           window.clearInterval(pollRef.current!);
           setStatus("failed");
-          setMessage("Payment timed out. Please try again.");
+          setMessage("Payment confirmation timed out. If you completed it on M-Pesa, please retry shortly.");
         }
       }, 4000);
     } catch (e) {

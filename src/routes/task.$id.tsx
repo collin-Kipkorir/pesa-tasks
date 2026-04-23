@@ -6,7 +6,7 @@ import { ArrowLeft, CheckCircle2, Loader2, PartyPopper } from "lucide-react";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth";
 import { useSurvey } from "@/lib/use-surveys";
-import { creditSurveyReward } from "@/lib/userdb";
+import { enqueueSurvey } from "@/lib/sync-queue";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/task/$id")({
@@ -57,7 +57,7 @@ function TaskPage() {
   const current = survey.questions[step];
   const answered = answers[step] !== undefined;
 
-  const next = async () => {
+  const next = () => {
     if (step < total - 1) {
       setStep(step + 1);
       return;
@@ -65,10 +65,11 @@ function TaskPage() {
     if (!user) return;
     setSubmitting(true);
     try {
-      await creditSurveyReward(user.phone, survey.id, survey.title, survey.reward);
+      // Optimistic local credit; queue syncs to Firebase in background.
+      enqueueSurvey(user.phone, survey.id, survey.title, survey.reward);
       setDone(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to credit reward.");
+      toast.error(e instanceof Error ? e.message : "Failed to claim reward.");
     } finally {
       setSubmitting(false);
     }

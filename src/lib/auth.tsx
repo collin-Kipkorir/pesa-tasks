@@ -3,12 +3,19 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { ref, get, set, onValue, update } from "firebase/database";
 import bcrypt from "bcryptjs";
 import { db, ADMIN_PHONE } from "./firebase";
 import { normalizePhone, isValidKePhone } from "./phone";
+import {
+  startBackgroundSync,
+  getPendingBalance,
+  getPendingCompleted,
+  hasPendingWelcome,
+} from "./sync-queue";
 
 export type UserRecord = {
   phone: string;
@@ -39,9 +46,31 @@ type AuthCtx = {
 const Ctx = createContext<AuthCtx | null>(null);
 const STORAGE_KEY = "pesatask:session";
 
+// Subscribe to local sync-queue changes (online/offline, queue mutations)
+function subscribeQueue(cb: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => cb();
+  window.addEventListener("pesatask:queue-changed", handler);
+  window.addEventListener("online", handler);
+  window.addEventListener("offline", handler);
+  return () => {
+    window.removeEventListener("pesatask:queue-changed", handler);
+    window.removeEventListener("online", handler);
+    window.removeEventListener("offline", handler);
+  };
+}
+function getQueueSnap() {
+  // any value that changes when queue mutates is fine; use length+timestamp marker
+  if (typeof window === "undefined") return "0";
+  return localStorage.getItem("pesatask:syncQueue") || "0";
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<UserRecord | null>(null);
+  const [rawUser, setRawUser] = useState<UserRecord | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Trigger re-render whenever the local sync queue changes
+  useSyncExternalStore(subscribeQueue, getQueueSnap, () => "0");
 
   // restore session + subscribe to live user record
   useEffect(() => {
@@ -55,12 +84,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       r,
       (snap) => {
         const val = snap.val() as UserRecord | null;
-        setUser(val);
+        setRawUser(val);
         setLoading(false);
       },
       () => setLoading(false),
     );
     return () => unsub();
+  }, []);
+
+  // Start background sync once mounted
+  useEffect(() => {
+    return startBackgroundSync();
   }, []);
 
   async function signup(data: { name: string; email?: string; phone: string; password: string }) {
@@ -84,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     await set(ref(db, `users/${phone}`), record);
     localStorage.setItem(STORAGE_KEY, phone);
-    setUser(record);
+    setRawUser(record);
   }
 
   async function login(phoneInput: string, password: string) {
@@ -94,19 +128,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const rec = snap.val() as UserRecord;
     const ok = await bcrypt.compare(password, rec.passwordHash);
     if (!ok) throw new Error("Incorrect password.");
-    // promote admin if matching phone (idempotent)
     if (phone === ADMIN_PHONE && rec.role !== "admin") {
       await update(ref(db, `users/${phone}`), { role: "admin" });
       rec.role = "admin";
     }
     localStorage.setItem(STORAGE_KEY, phone);
-    setUser(rec);
+    setRawUser(rec);
   }
 
   function logout() {
     localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
+    setRawUser(null);
   }
+
+  // Optimistic merge: overlay pending queue items on top of server snapshot
+  const user: UserRecord | null = rawUser
+    ? (() => {
+        const phone = rawUser.phone;
+        const pendingBal = getPendingBalance(phone);
+        const pendingDone = getPendingCompleted(phone);
+        const pendingWelcome = hasPendingWelcome(phone);
+        return {
+          ...rawUser,
+          balance: (rawUser.balance || 0) + pendingBal,
+          welcomeClaimed: rawUser.welcomeClaimed || pendingWelcome,
+          completed: { ...(rawUser.completed || {}), ...Object.fromEntries(
+            Object.keys(pendingDone).map((id) => [id, { date: Date.now(), amount: 0, title: "" }]),
+          ) },
+        };
+      })()
+    : null;
 
   return (
     <Ctx.Provider value={{ user, loading, signup, login, logout, isAdmin: user?.role === "admin" }}>

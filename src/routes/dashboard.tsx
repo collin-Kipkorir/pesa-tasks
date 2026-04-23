@@ -113,27 +113,36 @@ function Dashboard() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-5">
-        {!user?.activated && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 text-sm text-amber-900">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>Your account needs activation to withdraw earnings</span>
-              </div>
-              <div className="ml-auto flex items-center gap-3">
-                <div className="flex items-center gap-1.5 text-xs font-medium">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
-                  </span>
-                  Live Payouts
-                </div>
-                <LivePayoutTicker />
-                <Button variant="hero" size="sm" onClick={() => setActivateOpen(true)}>
-                  Activate Now
-                </Button>
-              </div>
+        {/* Always-visible Live Payouts ticker */}
+        <div className="rounded-xl border bg-card p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+              </span>
+              Live Payouts
             </div>
+            <div className="flex-1 min-w-[180px]">
+              <LivePayoutTicker />
+            </div>
+          </div>
+        </div>
+
+        {!user?.activated && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <div className="flex items-center gap-2 text-sm text-amber-900">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Your account needs activation to withdraw earnings</span>
+            </div>
+            <Button
+              variant="hero"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setActivateOpen(true)}
+            >
+              Activate Now
+            </Button>
           </div>
         )}
 
