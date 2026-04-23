@@ -3,12 +3,19 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { ref, get, set, onValue, update } from "firebase/database";
 import bcrypt from "bcryptjs";
 import { db, ADMIN_PHONE } from "./firebase";
 import { normalizePhone, isValidKePhone } from "./phone";
+import {
+  startBackgroundSync,
+  getPendingBalance,
+  getPendingCompleted,
+  hasPendingWelcome,
+} from "./sync-queue";
 
 export type UserRecord = {
   phone: string;
