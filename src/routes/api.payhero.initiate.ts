@@ -1,17 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { rtdbSet, rtdbUpdate } from "@/lib/rtdb-server";
+import { toMsisdn, normalizePhone, isValidKePhone } from "@/lib/phone";
 
-const BASE = "https://backend.payhero.co.ke/api/v2";
-
-// In-memory map of reference -> last known status (per worker instance).
-// Sufficient for short-lived STK polling within a single request lifecycle.
-const statusMap = new Map<string, { status: string; message?: string; purpose?: string; userPhone?: string }>();
-
-// expose to /status route via global (workers per-isolate)
-declare global {
-  // eslint-disable-next-line no-var
-  var __payheroStatus: Map<string, { status: string; message?: string; purpose?: string; userPhone?: string }> | undefined;
-}
-if (!globalThis.__payheroStatus) globalThis.__payheroStatus = statusMap;
+const PAYMENT_URL = "https://backend.payhero.co.ke/api/v2/payments";
 
 export const Route = createFileRoute("/api/payhero/initiate")({
   server: {
@@ -20,10 +11,25 @@ export const Route = createFileRoute("/api/payhero/initiate")({
         try {
           const body = (await request.json()) as {
             amount: number;
-            phone: string;
+            phone: string; // payer phone
             purpose: "activation" | "vip";
-            userPhone: string;
+            userPhone: string; // account owner phone (used as DB key)
           };
+
+          // Basic validation
+          const amount = Number(body.amount);
+          if (!amount || amount < 1 || amount > 1000000) {
+            return Response.json({ success: false, error: "Invalid amount" }, { status: 400 });
+          }
+          if (!body.purpose || (body.purpose !== "activation" && body.purpose !== "vip")) {
+            return Response.json({ success: false, error: "Invalid purpose" }, { status: 400 });
+          }
+          const localPayer = normalizePhone(body.phone);
+          if (!isValidKePhone(localPayer)) {
+            return Response.json({ success: false, error: "Invalid phone number" }, { status: 400 });
+          }
+          const payerMsisdn = toMsisdn(body.phone);
+          const userPhone = normalizePhone(body.userPhone);
 
           const auth = process.env.PAYHERO_AUTH_TOKEN;
           const channelId = Number(process.env.PAYHERO_CHANNEL_ID || "3838");
@@ -31,26 +37,36 @@ export const Route = createFileRoute("/api/payhero/initiate")({
             return Response.json({ success: false, error: "PayHero not configured" }, { status: 500 });
           }
 
+          // Create payment record FIRST so the client can subscribe immediately.
+          const paymentId = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const externalReference = `${body.purpose.toUpperCase()}-${userPhone}-${Date.now()}`;
           const origin = new URL(request.url).origin;
-          const callbackUrl = `${origin}/api/payhero/callback`;
-          const externalReference = `${body.purpose.toUpperCase()}-${body.userPhone}-${Date.now()}`;
+          const callbackUrl = `${origin}/api/payhero/callback?pid=${paymentId}`;
+
+          await rtdbSet(`payments/${paymentId}`, {
+            paymentId,
+            phone: userPhone,
+            payerPhone: payerMsisdn,
+            amount,
+            purpose: body.purpose,
+            status: "PENDING",
+            externalReference,
+            createdAt: Date.now(),
+          });
 
           const payload = {
-            amount: body.amount,
-            phone_number: body.phone,
+            amount,
+            phone_number: payerMsisdn,
             channel_id: channelId,
             provider: "m-pesa",
             external_reference: externalReference,
-            customer_name: body.userPhone,
+            customer_name: userPhone,
             callback_url: callbackUrl,
           };
 
-          const res = await fetch(`${BASE}/payments`, {
+          const res = await fetch(PAYMENT_URL, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: auth,
-            },
+            headers: { "Content-Type": "application/json", Authorization: auth },
             body: JSON.stringify(payload),
           });
           const data = (await res.json()) as {
@@ -61,26 +77,38 @@ export const Route = createFileRoute("/api/payhero/initiate")({
             error?: string;
             error_message?: string;
           };
+
           if (!res.ok || !data.success || !data.reference) {
+            await rtdbUpdate(`payments/${paymentId}`, {
+              status: "FAILED",
+              resultDesc: data.error_message || data.error || `PayHero ${res.status}`,
+              updatedAt: Date.now(),
+            });
             return Response.json(
-              { success: false, error: data.error_message || data.error || `PayHero ${res.status}` },
+              {
+                success: false,
+                paymentId,
+                error: data.error_message || data.error || `PayHero ${res.status}`,
+              },
               { status: 400 },
             );
           }
 
-          const meta = {
-            status: "PENDING",
-            purpose: body.purpose,
-            userPhone: body.userPhone,
-          } as const;
-          // Track every possible key the callback might use to match.
-          globalThis.__payheroStatus!.set(data.reference, { ...meta });
+          await rtdbUpdate(`payments/${paymentId}`, {
+            reference: data.reference,
+            CheckoutRequestID: data.CheckoutRequestID || "",
+            updatedAt: Date.now(),
+          });
+
+          // Index references back to paymentId for callback lookup.
+          if (data.reference) await rtdbSet(`paymentRefs/${data.reference}`, paymentId);
           if (data.CheckoutRequestID)
-            globalThis.__payheroStatus!.set(data.CheckoutRequestID, { ...meta });
-          globalThis.__payheroStatus!.set(externalReference, { ...meta });
+            await rtdbSet(`paymentRefs/${data.CheckoutRequestID}`, paymentId);
+          await rtdbSet(`paymentRefs/${externalReference}`, paymentId);
 
           return Response.json({
             success: true,
+            paymentId,
             reference: data.reference,
             checkoutRequestId: data.CheckoutRequestID,
             externalReference,
