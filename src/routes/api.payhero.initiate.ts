@@ -40,8 +40,11 @@ export const Route = createFileRoute("/api/payhero/initiate")({
           // Create payment record FIRST so the client can subscribe immediately.
           const paymentId = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           const externalReference = `${body.purpose.toUpperCase()}-${userPhone}-${Date.now()}`;
-          const origin = new URL(request.url).origin;
-          const callbackUrl = `${origin}/api/payhero/callback?pid=${paymentId}`;
+          // Prefer an explicit public base URL for the callback so PayHero can reach it
+          // in production (preview URLs are not publicly reachable from PayHero).
+          const publicBase =
+            process.env.PUBLIC_BASE_URL || new URL(request.url).origin;
+          const callbackUrl = `${publicBase.replace(/\/$/, "")}/api/payhero/callback?pid=${paymentId}`;
 
           await rtdbSet(`payments/${paymentId}`, {
             paymentId,
