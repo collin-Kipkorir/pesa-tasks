@@ -12,6 +12,7 @@ import { Loader2, Smartphone, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { isValidKePhone, normalizePhone } from "@/lib/phone";
 import { markActivated, markVip } from "@/lib/userdb";
+import { subscribePayment, type PaymentRecord } from "@/lib/payments-db";
 
 type Purpose = "activation" | "vip";
 
@@ -29,24 +30,90 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const [phone, setPhone] = useState(user?.phone || "");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string>("");
+  const [paymentId, setPaymentId] = useState<string>("");
   const [reference, setReference] = useState<string>("");
-  const [externalReference, setExternalReference] = useState<string>("");
-  const pollRef = useRef<number | null>(null);
+  const unsubRef = useRef<null | (() => void)>(null);
+  const failsafeRef = useRef<number | null>(null);
+  const handledRef = useRef(false);
+
+  function cleanup() {
+    if (unsubRef.current) {
+      unsubRef.current();
+      unsubRef.current = null;
+    }
+    if (failsafeRef.current) {
+      window.clearTimeout(failsafeRef.current);
+      failsafeRef.current = null;
+    }
+  }
 
   useEffect(() => {
     if (open) {
       setPhone(user?.phone || "");
       setStatus("idle");
       setMessage("");
+      setPaymentId("");
       setReference("");
-      setExternalReference("");
+      handledRef.current = false;
     }
-    return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
-    };
+    return () => cleanup();
   }, [open, user?.phone]);
 
   const purposeLabel = purpose === "activation" ? "Account Activation" : "VIP Unlock";
+
+  async function handleTerminal(rec: PaymentRecord) {
+    if (handledRef.current) return;
+    if (rec.status === "SUCCESS") {
+      handledRef.current = true;
+      cleanup();
+      // Only unlock after confirmed M-Pesa success.
+      if (user) {
+        if (purpose === "activation") await markActivated(user.phone);
+        else await markVip(user.phone);
+      }
+      setStatus("success");
+      setMessage(
+        rec.MpesaReceiptNumber
+          ? `Payment confirmed (${rec.MpesaReceiptNumber})`
+          : "M-Pesa payment confirmed!",
+      );
+      setTimeout(() => onOpenChange(false), 1800);
+    } else if (rec.status === "FAILED" || rec.status === "CANCELLED") {
+      handledRef.current = true;
+      cleanup();
+      setStatus("failed");
+      setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
+    }
+  }
+
+  // Failsafe: if no realtime callback updates within 12s, poll status API
+  function startFailsafe(pid: string, ref: string) {
+    let attempts = 0;
+    const tick = async () => {
+      if (handledRef.current) return;
+      attempts += 1;
+      try {
+        const qs = new URLSearchParams({ paymentId: pid });
+        if (ref) qs.set("reference", ref);
+        const res = await fetch(`/api/payhero/status?${qs.toString()}`);
+        const data = (await res.json()) as { status: string; message?: string };
+        if (data.status === "SUCCESS" || data.status === "FAILED" || data.status === "CANCELLED") {
+          // The status route persists terminal state to RTDB, so the realtime
+          // listener will fire handleTerminal. Nothing else to do.
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      if (attempts < 30 && !handledRef.current) {
+        failsafeRef.current = window.setTimeout(tick, 5000);
+      } else if (!handledRef.current) {
+        setStatus("failed");
+        setMessage("Payment confirmation timed out. If you completed it, retry in a moment.");
+      }
+    };
+    failsafeRef.current = window.setTimeout(tick, 12000);
+  }
 
   const startPayment = async () => {
     if (!user) return;
@@ -57,6 +124,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     }
     setStatus("sending");
     setMessage("Sending STK push to your phone...");
+    handledRef.current = false;
     try {
       const res = await fetch("/api/payhero/initiate", {
         method: "POST",
@@ -68,55 +136,29 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
           userPhone: user.phone,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      const data = (await res.json()) as {
+        success: boolean;
+        paymentId?: string;
+        reference?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.paymentId) {
         setStatus("failed");
         setMessage(data.error || "Failed to send STK push.");
         return;
       }
-      setReference(data.reference);
-      setExternalReference(data.externalReference || "");
+      setPaymentId(data.paymentId);
+      setReference(data.reference || "");
       setStatus("waiting");
       setMessage("Check your phone and enter your M-Pesa PIN to authorize the payment.");
 
-      // Poll up to ~3 minutes. We will ONLY mark the user as activated/VIP after
-      // PayHero confirms M-Pesa authorization (SUCCESS).
-      let attempts = 0;
-      const refs = [data.reference, data.externalReference].filter(Boolean) as string[];
-      pollRef.current = window.setInterval(async () => {
-        attempts += 1;
-        try {
-          let final: { status: string; message?: string } | null = null;
-          for (const r of refs) {
-            const sres = await fetch(`/api/payhero/status?reference=${encodeURIComponent(r)}`);
-            const sdata = await sres.json();
-            if (sdata.status === "SUCCESS" || sdata.status === "FAILED" || sdata.status === "CANCELLED") {
-              final = sdata;
-              break;
-            }
-          }
-          if (final?.status === "SUCCESS") {
-            window.clearInterval(pollRef.current!);
-            // Only now do we unlock the feature.
-            if (purpose === "activation") await markActivated(user.phone);
-            else await markVip(user.phone);
-            setStatus("success");
-            setMessage("M-Pesa payment confirmed!");
-            setTimeout(() => onOpenChange(false), 1800);
-          } else if (final?.status === "FAILED" || final?.status === "CANCELLED") {
-            window.clearInterval(pollRef.current!);
-            setStatus("failed");
-            setMessage(final.message || "Payment was not completed on M-Pesa.");
-          }
-        } catch {
-          // ignore transient errors
-        }
-        if (attempts > 45) {
-          window.clearInterval(pollRef.current!);
-          setStatus("failed");
-          setMessage("Payment confirmation timed out. If you completed it on M-Pesa, please retry shortly.");
-        }
-      }, 4000);
+      // Realtime: subscribe to the payment node — UI updates instantly on callback.
+      unsubRef.current = subscribePayment(data.paymentId, (rec) => {
+        if (rec) void handleTerminal(rec);
+      });
+
+      // Failsafe in case the callback never fires.
+      startFailsafe(data.paymentId, data.reference || "");
     } catch (e) {
       setStatus("failed");
       setMessage(e instanceof Error ? e.message : "Network error.");
@@ -144,6 +186,8 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
               onChange={(e) => setPhone(e.target.value)}
               placeholder="0712345678"
               type="tel"
+              inputMode="tel"
+              maxLength={13}
             />
             {message && <p className="text-xs text-destructive">{message}</p>}
             <Button variant="hero" size="lg" className="w-full" onClick={startPayment}>
@@ -156,8 +200,10 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
           <div className="flex flex-col items-center gap-3 py-4 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-primary" />
             <p className="text-sm font-medium">{message}</p>
-            {reference && (
-              <p className="text-[11px] text-muted-foreground">Ref: {reference}</p>
+            {(paymentId || reference) && (
+              <p className="text-[11px] text-muted-foreground">
+                Ref: {reference || paymentId}
+              </p>
             )}
           </div>
         )}
