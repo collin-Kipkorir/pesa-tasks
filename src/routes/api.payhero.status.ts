@@ -1,53 +1,55 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { rtdbGet, rtdbUpdate } from "@/lib/rtdb-server";
 
-const BASE = "https://backend.payhero.co.ke/api/v2";
+const STATUS_URL = "https://backend.payhero.co.ke/api/v2/transaction-status";
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __payheroStatus:
-    | Map<
-        string,
-        { status: string; message?: string; purpose?: string; userPhone?: string }
-      >
-    | undefined;
-}
-if (!globalThis.__payheroStatus) globalThis.__payheroStatus = new Map();
+type PaymentDoc = {
+  status?: string;
+  reference?: string;
+  CheckoutRequestID?: string;
+  externalReference?: string;
+};
 
 export const Route = createFileRoute("/api/payhero/status")({
   server: {
     handlers: {
       GET: async ({ request }: { request: Request }) => {
         const url = new URL(request.url);
-        const reference = url.searchParams.get("reference");
+        const paymentId = url.searchParams.get("paymentId");
+        const refParam = url.searchParams.get("reference");
+
+        let pid = paymentId || "";
+        let doc: PaymentDoc | null = null;
+
+        if (pid) {
+          doc = await rtdbGet<PaymentDoc>(`payments/${pid}`);
+        } else if (refParam) {
+          const found = await rtdbGet<string>(`paymentRefs/${refParam}`);
+          if (found) {
+            pid = found;
+            doc = await rtdbGet<PaymentDoc>(`payments/${pid}`);
+          }
+        }
+
+        // If RTDB already has a terminal status, return it.
+        if (doc?.status && doc.status !== "PENDING") {
+          return Response.json({ status: doc.status });
+        }
+
+        // Otherwise fall back to PayHero transaction-status (callback failsafe).
+        const reference = doc?.reference || refParam;
         if (!reference) {
-          return Response.json(
-            { status: "ERROR", message: "Missing reference" },
-            { status: 400 },
-          );
+          return Response.json({ status: "PENDING" });
         }
 
-        // 1) Trust the callback cache first — that's the M-Pesa-confirmed source of truth.
-        const cached = globalThis.__payheroStatus!.get(reference);
-        if (
-          cached &&
-          (cached.status === "SUCCESS" ||
-            cached.status === "FAILED" ||
-            cached.status === "CANCELLED")
-        ) {
-          return Response.json({ status: cached.status, message: cached.message });
-        }
-
-        // 2) Fall back to PayHero transaction-status. Only treat as terminal SUCCESS
-        // when both `status === "SUCCESS"` and an M-Pesa receipt / ResultCode 0 is present.
         try {
           const auth = process.env.PAYHERO_AUTH_TOKEN;
           const res = await fetch(
-            `${BASE}/transaction-status?reference=${encodeURIComponent(reference)}`,
+            `${STATUS_URL}?reference=${encodeURIComponent(reference)}`,
             { headers: auth ? { Authorization: auth } : {} },
           );
           const data = (await res.json()) as {
             status?: string;
-            success?: boolean;
             ResultCode?: number;
             MpesaReceiptNumber?: string;
             mpesa_receipt_number?: string;
@@ -55,31 +57,25 @@ export const Route = createFileRoute("/api/payhero/status")({
           };
 
           const s = (data.status || "").toUpperCase();
-          const hasReceipt = Boolean(
-            data.MpesaReceiptNumber || data.mpesa_receipt_number,
-          );
-          const resultCodeOk = data.ResultCode === 0;
+          const receipt = data.MpesaReceiptNumber || data.mpesa_receipt_number;
+          const isSuccess = data.ResultCode === 0 || (s === "SUCCESS" && Boolean(receipt));
+          const isFailed = s === "FAILED" || s === "CANCELLED" ||
+            (typeof data.ResultCode === "number" && data.ResultCode !== 0 && !receipt);
 
-          let mapped: "PENDING" | "SUCCESS" | "FAILED" | "CANCELLED" = "PENDING";
-          // Strict: only success when PayHero clearly confirms M-Pesa authorization.
-          if ((s === "SUCCESS" && (hasReceipt || resultCodeOk)) || resultCodeOk) {
-            mapped = "SUCCESS";
-          } else if (s === "FAILED") {
-            mapped = "FAILED";
-          } else if (s === "CANCELLED") {
-            mapped = "CANCELLED";
-          }
+          let mapped: "PENDING" | "SUCCESS" | "FAILED" = "PENDING";
+          if (isSuccess) mapped = "SUCCESS";
+          else if (isFailed) mapped = "FAILED";
 
-          if (mapped !== "PENDING") {
-            const prev = globalThis.__payheroStatus!.get(reference) || {
+          // If we have a paymentId and a terminal status, persist it so realtime listener fires.
+          if (pid && mapped !== "PENDING") {
+            await rtdbUpdate(`payments/${pid}`, {
               status: mapped,
-            };
-            globalThis.__payheroStatus!.set(reference, {
-              ...prev,
-              status: mapped,
-              message: data.ResultDesc,
+              MpesaReceiptNumber: receipt || "",
+              resultDesc: data.ResultDesc || "",
+              updatedAt: Date.now(),
             });
           }
+
           return Response.json({ status: mapped, message: data.ResultDesc });
         } catch (e) {
           return Response.json({
