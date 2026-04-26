@@ -1,34 +1,91 @@
-// SSR handler for Vercel — delegates to the built server entry (dist/server/index.js)
-// This file is used when a request doesn't match an API route or static file.
-
 import path from "path";
+import { pathToFileURL } from "url";
 
-let nodeHandler = null;
+let handlerFactory = null;
+let handlerInstance = null;
 
-async function ensureHandler() {
-  if (nodeHandler) return nodeHandler;
+async function loadEntry() {
+  if (handlerFactory) return handlerFactory;
   const built = path.resolve(process.cwd(), "dist", "server", "index.js");
-  const mod = await import(built);
-  // TanStack Start server build exports `createServerEntry` which returns a
-  // Node-compatible request handler. Call it and reuse the result.
-  if (typeof mod.createServerEntry === "function") {
-    nodeHandler = await mod.createServerEntry();
-  } else if (typeof mod.default === "function") {
-    // Some builds export default as a handler factory
-    nodeHandler = await mod.default();
-  } else {
-    throw new Error("No server entry factory found in dist/server");
+  const mod = await import(pathToFileURL(built).href);
+  handlerFactory = mod.createServerEntry || mod.default;
+  if (!handlerFactory) throw new Error("No server entry factory found in dist/server/index.js");
+  return handlerFactory;
+}
+
+function nodeReqToRequest(req) {
+  const protocol = req.headers["x-forwarded-proto"] || "http";
+  const host = req.headers.host;
+  const url = `${protocol}://${host}${req.url}`;
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers || {})) {
+    if (Array.isArray(v)) v.forEach((vv) => headers.append(k, String(vv)));
+    else if (v != null) headers.set(k, String(v));
   }
-  return nodeHandler;
+  const body = req.method === "GET" || req.method === "HEAD" ? null : req;
+  return new Request(url, { method: req.method, headers, body });
+}
+
+async function respondWithNode(res, response) {
+  res.statusCode = response.status;
+  for (const [k, v] of response.headers) {
+    // Node can't set some headers after body start; set all before piping
+    res.setHeader(k, v);
+  }
+  const reader = response.body?.getReader?.();
+  if (!reader) {
+    // No body or not a stream
+    const text = await response.text();
+    res.end(text);
+    return;
+  }
+  const stream = new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) controller.close();
+      else controller.enqueue(value);
+    }
+  });
+  const nodeStream = stream.pipeTo ? stream : null;
+  // Fallback: consume by reading chunks and writing to res
+  const reader2 = response.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader2.read();
+      if (done) break;
+      if (value) res.write(Buffer.from(value));
+    }
+  } finally {
+    res.end();
+  }
 }
 
 export default async function handler(req, res) {
   try {
-    const h = await ensureHandler();
-    // Delegate to built handler
-    return h(req, res);
-  } catch (e) {
-    console.error("SSR handler error", e?.stack || e?.message || e);
+    const factory = await loadEntry();
+    if (!handlerInstance) {
+      // The factory may return an object with a `fetch` method (worker style)
+      handlerInstance = await factory();
+    }
+    // If instance has fetch, call as web fetch handler
+    if (handlerInstance && typeof handlerInstance.fetch === "function") {
+      const webReq = nodeReqToRequest(req);
+      const webRes = await handlerInstance.fetch(webReq);
+      return respondWithNode(res, webRes);
+    }
+    // Otherwise, if the factory returned a Node-compatible handler function
+    if (typeof handlerInstance === "function") {
+      return handlerInstance(req, res);
+    }
+    // If the factory itself is a function that handles req/res
+    if (typeof factory === "function") {
+      const maybe = await factory(req, res);
+      if (maybe) return maybe;
+    }
+    res.statusCode = 500;
+    res.end("No usable server handler found");
+  } catch (err) {
+    console.error("SSR proxy error:", err?.stack || err?.message || err);
     res.statusCode = 500;
     res.end("SSR error");
   }
