@@ -24,7 +24,6 @@ export const Route = createFileRoute("/")({
 });
 
 function Landing() {
-
   return (
     <div className="min-h-screen bg-background">
       {/* Top nav */}
@@ -141,7 +140,6 @@ function Landing() {
         © {new Date().getFullYear()} Pesatask. All rights reserved.
       </footer>
 
-      
     </div>
   );
 }
