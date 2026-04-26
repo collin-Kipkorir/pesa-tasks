@@ -7,10 +7,24 @@ let handlerInstance = null;
 async function loadEntry() {
   if (handlerFactory) return handlerFactory;
   const built = path.resolve(process.cwd(), "dist", "server", "index.js");
-  const mod = await import(pathToFileURL(built).href);
-  handlerFactory = mod.createServerEntry || mod.default;
-  if (!handlerFactory) throw new Error("No server entry factory found in dist/server/index.js");
-  return handlerFactory;
+  try {
+    console.log("[ssr] loading built server entry:", built);
+    const mod = await import(pathToFileURL(built).href);
+    console.log("[ssr] module keys:", Object.keys(mod));
+    // Prefer a fully-initialized default export when available (the build often
+    // exports a ready-to-use server entry as `default`). Fall back to
+    // createServerEntry factory if default is not provided.
+    handlerFactory = mod.default || mod.createServerEntry;
+    console.log("[ssr] resolved factory type:", typeof handlerFactory);
+    if (!handlerFactory) {
+      console.error("[ssr] no factory found in module exports", Object.keys(mod));
+      throw new Error("No server entry factory found in dist/server/index.js");
+    }
+    return handlerFactory;
+  } catch (e) {
+    console.error("[ssr] failed loading server entry:", e?.stack || e?.message || e);
+    throw e;
+  }
 }
 
 function nodeReqToRequest(req) {
