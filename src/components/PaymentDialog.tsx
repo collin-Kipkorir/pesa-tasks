@@ -21,7 +21,11 @@ import {
 import { useAuth } from "@/lib/auth";
 import { isValidKePhone, normalizePhone } from "@/lib/phone";
 import { markActivated, markVip } from "@/lib/userdb";
-import { subscribePayment, type PaymentRecord } from "@/lib/payments-db";
+import {
+  subscribePayment,
+  type PaymentRecord,
+  type PaymentStatus,
+} from "@/lib/payments-db";
 import { cn } from "@/lib/utils";
 
 type Purpose = "activation" | "vip";
