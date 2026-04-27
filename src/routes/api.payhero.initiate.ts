@@ -97,7 +97,9 @@ export const Route = createFileRoute("/api/payhero/initiate")({
             );
           }
 
+          // STK push accepted by PayHero — prompt is now on the user's phone.
           await rtdbUpdate(`payments/${paymentId}`, {
+            status: "QUEUED",
             reference: data.reference,
             CheckoutRequestID: data.CheckoutRequestID || "",
             updatedAt: Date.now(),
