@@ -146,15 +146,23 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const purposeLabel = purpose === "activation" ? "Account Activation" : "VIP Unlock";
   const isLocked = status === "sending" || status === "pending" || status === "in_progress";
 
-  async function handleTerminal(rec: PaymentRecord) {
+  // Single handler driven entirely by the RTDB record. Maps every PaymentStatus
+  // value into the corresponding UI stage — no client-side timers required.
+  async function handleRecord(rec: PaymentRecord) {
     if (handledRef.current) return;
 
-    // Promote to in_progress as soon as we see the record progress past PENDING.
-    if (rec.status === "PENDING" && status === "pending") {
-      // still pending, no-op
+    const uiStatus = mapRtdbStatus(rec.status);
+
+    // Non-terminal: just sync stage + message and keep listening.
+    if (uiStatus === "pending" || uiStatus === "in_progress") {
+      setStatus(uiStatus);
+      setMessage(messageFor(rec.status));
+      setErrorHint("");
+      return;
     }
 
-    if (rec.status === "SUCCESS") {
+    // Terminal: success
+    if (uiStatus === "success") {
       handledRef.current = true;
       cleanup();
       if (user) {
@@ -169,27 +177,29 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       );
       setErrorHint("");
       setTimeout(() => onOpenChange(false), 2000);
-    } else if (rec.status === "FAILED" || rec.status === "CANCELLED") {
-      handledRef.current = true;
-      cleanup();
-      setStatus("failed");
-      const desc = (rec.resultDesc || "").toLowerCase();
-      if (desc.includes("cancel")) {
-        setMessage("You cancelled the M-Pesa prompt.");
-        setErrorHint("Tap Try Again and approve the prompt with your M-Pesa PIN.");
-      } else if (desc.includes("insufficient") || desc.includes("balance")) {
-        setMessage("Insufficient M-Pesa balance.");
-        setErrorHint("Top up your M-Pesa, then try again.");
-      } else if (desc.includes("timeout") || desc.includes("expire")) {
-        setMessage("The STK prompt timed out.");
-        setErrorHint("Make sure your phone is on and unlocked, then retry.");
-      } else if (desc.includes("wrong") || desc.includes("pin")) {
-        setMessage("Incorrect M-Pesa PIN.");
-        setErrorHint("Try again and enter the correct PIN.");
-      } else {
-        setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
-        setErrorHint("Check your phone and try again.");
-      }
+      return;
+    }
+
+    // Terminal: failed / cancelled — derive a friendlier message.
+    handledRef.current = true;
+    cleanup();
+    setStatus("failed");
+    const desc = (rec.resultDesc || "").toLowerCase();
+    if (rec.status === "CANCELLED" || desc.includes("cancel")) {
+      setMessage("You cancelled the M-Pesa prompt.");
+      setErrorHint("Tap Try Again and approve the prompt with your M-Pesa PIN.");
+    } else if (desc.includes("insufficient") || desc.includes("balance")) {
+      setMessage("Insufficient M-Pesa balance.");
+      setErrorHint("Top up your M-Pesa, then try again.");
+    } else if (desc.includes("timeout") || desc.includes("expire")) {
+      setMessage("The STK prompt timed out.");
+      setErrorHint("Make sure your phone is on and unlocked, then retry.");
+    } else if (desc.includes("wrong") || desc.includes("pin")) {
+      setMessage("Incorrect M-Pesa PIN.");
+      setErrorHint("Try again and enter the correct PIN.");
+    } else {
+      setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
+      setErrorHint("Check your phone and try again.");
     }
   }
 
