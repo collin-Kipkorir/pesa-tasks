@@ -389,9 +389,6 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                   <Clock className="h-3 w-3" />
                   {elapsed}s elapsed
                 </span>
-                {(reference || paymentId) && (
-                  <span className="font-mono">Ref: {reference || paymentId}</span>
-                )}
               </div>
             </div>
 
