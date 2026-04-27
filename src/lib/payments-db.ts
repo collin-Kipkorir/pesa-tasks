@@ -1,7 +1,13 @@
 import { ref, onValue, off, get } from "firebase/database";
 import { db } from "./firebase";
 
-export type PaymentStatus = "PENDING" | "SUCCESS" | "FAILED" | "CANCELLED";
+export type PaymentStatus =
+  | "PENDING" // record created, STK not yet acknowledged
+  | "QUEUED" // PayHero accepted the STK push, prompt is on user's phone
+  | "PROCESSING" // user is interacting with prompt (entered PIN, awaiting M-Pesa)
+  | "SUCCESS"
+  | "FAILED"
+  | "CANCELLED";
 
 export type PaymentRecord = {
   paymentId: string;

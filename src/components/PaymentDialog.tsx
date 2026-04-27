@@ -21,7 +21,11 @@ import {
 import { useAuth } from "@/lib/auth";
 import { isValidKePhone, normalizePhone } from "@/lib/phone";
 import { markActivated, markVip } from "@/lib/userdb";
-import { subscribePayment, type PaymentRecord } from "@/lib/payments-db";
+import {
+  subscribePayment,
+  type PaymentRecord,
+  type PaymentStatus,
+} from "@/lib/payments-db";
 import { cn } from "@/lib/utils";
 
 type Purpose = "activation" | "vip";
@@ -52,6 +56,48 @@ const STAGES: { key: Exclude<Status, "idle" | "failed">; label: string; icon: Re
 function stageIndex(s: Status): number {
   const i = STAGES.findIndex((x) => x.key === s);
   return i === -1 ? -1 : i;
+}
+
+// Single source of truth: RTDB PaymentStatus → UI Status.
+// PENDING        → "pending"      (record created, STK not yet acknowledged)
+// QUEUED         → "in_progress"  (STK push delivered, prompt on phone)
+// PROCESSING     → "in_progress"  (user entering PIN / awaiting M-Pesa)
+// SUCCESS        → "success"
+// FAILED|CANCEL  → "failed"
+function mapRtdbStatus(s: PaymentStatus): Status {
+  switch (s) {
+    case "PENDING":
+      return "pending";
+    case "QUEUED":
+    case "PROCESSING":
+      return "in_progress";
+    case "SUCCESS":
+      return "success";
+    case "FAILED":
+    case "CANCELLED":
+      return "failed";
+    default:
+      return "pending";
+  }
+}
+
+function messageFor(s: PaymentStatus): string {
+  switch (s) {
+    case "PENDING":
+      return "Sending STK push to your phone…";
+    case "QUEUED":
+      return "STK push delivered. Check your phone for the M-Pesa prompt.";
+    case "PROCESSING":
+      return "Enter your M-Pesa PIN to authorize the payment.";
+    case "SUCCESS":
+      return "M-Pesa payment confirmed!";
+    case "FAILED":
+      return "Payment failed.";
+    case "CANCELLED":
+      return "You cancelled the M-Pesa prompt.";
+    default:
+      return "";
+  }
 }
 
 export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
@@ -100,15 +146,23 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const purposeLabel = purpose === "activation" ? "Account Activation" : "VIP Unlock";
   const isLocked = status === "sending" || status === "pending" || status === "in_progress";
 
-  async function handleTerminal(rec: PaymentRecord) {
+  // Single handler driven entirely by the RTDB record. Maps every PaymentStatus
+  // value into the corresponding UI stage — no client-side timers required.
+  async function handleRecord(rec: PaymentRecord) {
     if (handledRef.current) return;
 
-    // Promote to in_progress as soon as we see the record progress past PENDING.
-    if (rec.status === "PENDING" && status === "pending") {
-      // still pending, no-op
+    const uiStatus = mapRtdbStatus(rec.status);
+
+    // Non-terminal: just sync stage + message and keep listening.
+    if (uiStatus === "pending" || uiStatus === "in_progress") {
+      setStatus(uiStatus);
+      setMessage(messageFor(rec.status));
+      setErrorHint("");
+      return;
     }
 
-    if (rec.status === "SUCCESS") {
+    // Terminal: success
+    if (uiStatus === "success") {
       handledRef.current = true;
       cleanup();
       if (user) {
@@ -123,27 +177,29 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       );
       setErrorHint("");
       setTimeout(() => onOpenChange(false), 2000);
-    } else if (rec.status === "FAILED" || rec.status === "CANCELLED") {
-      handledRef.current = true;
-      cleanup();
-      setStatus("failed");
-      const desc = (rec.resultDesc || "").toLowerCase();
-      if (desc.includes("cancel")) {
-        setMessage("You cancelled the M-Pesa prompt.");
-        setErrorHint("Tap Try Again and approve the prompt with your M-Pesa PIN.");
-      } else if (desc.includes("insufficient") || desc.includes("balance")) {
-        setMessage("Insufficient M-Pesa balance.");
-        setErrorHint("Top up your M-Pesa, then try again.");
-      } else if (desc.includes("timeout") || desc.includes("expire")) {
-        setMessage("The STK prompt timed out.");
-        setErrorHint("Make sure your phone is on and unlocked, then retry.");
-      } else if (desc.includes("wrong") || desc.includes("pin")) {
-        setMessage("Incorrect M-Pesa PIN.");
-        setErrorHint("Try again and enter the correct PIN.");
-      } else {
-        setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
-        setErrorHint("Check your phone and try again.");
-      }
+      return;
+    }
+
+    // Terminal: failed / cancelled — derive a friendlier message.
+    handledRef.current = true;
+    cleanup();
+    setStatus("failed");
+    const desc = (rec.resultDesc || "").toLowerCase();
+    if (rec.status === "CANCELLED" || desc.includes("cancel")) {
+      setMessage("You cancelled the M-Pesa prompt.");
+      setErrorHint("Tap Try Again and approve the prompt with your M-Pesa PIN.");
+    } else if (desc.includes("insufficient") || desc.includes("balance")) {
+      setMessage("Insufficient M-Pesa balance.");
+      setErrorHint("Top up your M-Pesa, then try again.");
+    } else if (desc.includes("timeout") || desc.includes("expire")) {
+      setMessage("The STK prompt timed out.");
+      setErrorHint("Make sure your phone is on and unlocked, then retry.");
+    } else if (desc.includes("wrong") || desc.includes("pin")) {
+      setMessage("Incorrect M-Pesa PIN.");
+      setErrorHint("Try again and enter the correct PIN.");
+    } else {
+      setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
+      setErrorHint("Check your phone and try again.");
     }
   }
 
@@ -226,21 +282,11 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       setMessage("STK push sent. Check your phone for the M-Pesa prompt.");
       startTicker();
 
-      // After 6s, optimistically advance to "in_progress" so the user sees motion.
-      window.setTimeout(() => {
-        if (!handledRef.current) {
-          setStatus((s) => (s === "pending" ? "in_progress" : s));
-          setMessage((m) =>
-            m.startsWith("STK push sent")
-              ? "Enter your M-Pesa PIN on the prompt to authorize the payment."
-              : m,
-          );
-        }
-      }, 6000);
-
-      // Realtime updates from RTDB.
+      // Realtime updates from RTDB drive every UI stage transition.
+      // The server writes PENDING → QUEUED → (PROCESSING) → SUCCESS/FAILED/CANCELLED,
+      // and `mapRtdbStatus` translates each value into the matching UI stage.
       unsubRef.current = subscribePayment(data.paymentId, (rec) => {
-        if (rec) void handleTerminal(rec);
+        if (rec) void handleRecord(rec);
       });
 
       // Failsafe in case the callback never fires.
