@@ -282,21 +282,11 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       setMessage("STK push sent. Check your phone for the M-Pesa prompt.");
       startTicker();
 
-      // After 6s, optimistically advance to "in_progress" so the user sees motion.
-      window.setTimeout(() => {
-        if (!handledRef.current) {
-          setStatus((s) => (s === "pending" ? "in_progress" : s));
-          setMessage((m) =>
-            m.startsWith("STK push sent")
-              ? "Enter your M-Pesa PIN on the prompt to authorize the payment."
-              : m,
-          );
-        }
-      }, 6000);
-
-      // Realtime updates from RTDB.
+      // Realtime updates from RTDB drive every UI stage transition.
+      // The server writes PENDING → QUEUED → (PROCESSING) → SUCCESS/FAILED/CANCELLED,
+      // and `mapRtdbStatus` translates each value into the matching UI stage.
       unsubRef.current = subscribePayment(data.paymentId, (rec) => {
-        if (rec) void handleTerminal(rec);
+        if (rec) void handleRecord(rec);
       });
 
       // Failsafe in case the callback never fires.
