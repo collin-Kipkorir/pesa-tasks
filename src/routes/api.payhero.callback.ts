@@ -40,16 +40,37 @@ export const Route = createFileRoute("/api/payhero/callback")({
 
           // Strict success: ResultCode 0 OR explicit M-Pesa receipt number.
           const isSuccess = r.ResultCode === 0 || Boolean(r.MpesaReceiptNumber);
+          const desc = (r.ResultDesc || "").toLowerCase();
+          const isCancelled =
+            r.ResultCode === 1032 ||
+            desc.includes("cancel") ||
+            desc.includes("request cancelled by user");
           const isFailed =
-            (typeof r.ResultCode === "number" && r.ResultCode !== 0) || r.Status === "Failed";
+            !isSuccess &&
+            ((typeof r.ResultCode === "number" && r.ResultCode !== 0) || r.Status === "Failed");
+          // Intermediate signal: PayHero sometimes posts a "processing" / queued
+          // update before the terminal callback. Promote the UI to PROCESSING.
+          const isProcessing =
+            !isSuccess &&
+            !isFailed &&
+            !isCancelled &&
+            (r.Status === "Processing" ||
+              r.Status === "Queued" ||
+              desc.includes("processing") ||
+              desc.includes("pin"));
 
-          const status = isSuccess ? "SUCCESS" : isFailed ? "FAILED" : "PENDING";
-          if (status === "PENDING") return Response.json({ ok: true });
+          let status: "SUCCESS" | "FAILED" | "CANCELLED" | "PROCESSING" | null = null;
+          if (isSuccess) status = "SUCCESS";
+          else if (isCancelled) status = "CANCELLED";
+          else if (isFailed) status = "FAILED";
+          else if (isProcessing) status = "PROCESSING";
+
+          if (!status) return Response.json({ ok: true });
 
           await rtdbUpdate(`payments/${paymentId}`, {
             status,
-            MpesaReceiptNumber: r.MpesaReceiptNumber || "",
-            resultDesc: r.ResultDesc || "",
+            ...(r.MpesaReceiptNumber ? { MpesaReceiptNumber: r.MpesaReceiptNumber } : {}),
+            ...(r.ResultDesc ? { resultDesc: r.ResultDesc } : {}),
             updatedAt: Date.now(),
           });
 
