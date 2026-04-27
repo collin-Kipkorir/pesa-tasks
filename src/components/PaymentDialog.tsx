@@ -8,11 +8,21 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Smartphone, CheckCircle2, XCircle } from "lucide-react";
+import {
+  Loader2,
+  Smartphone,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Send,
+  ShieldCheck,
+  AlertTriangle,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { isValidKePhone, normalizePhone } from "@/lib/phone";
 import { markActivated, markVip } from "@/lib/userdb";
 import { subscribePayment, type PaymentRecord } from "@/lib/payments-db";
+import { cn } from "@/lib/utils";
 
 type Purpose = "activation" | "vip";
 
@@ -23,17 +33,39 @@ interface Props {
   amount: number;
 }
 
-type Status = "idle" | "sending" | "waiting" | "success" | "failed";
+// UI status state (richer than the DB enum so we can show staged progress)
+type Status =
+  | "idle"
+  | "sending" // calling /api/payhero/initiate
+  | "pending" // STK queued, waiting for user to see prompt
+  | "in_progress" // user has the prompt / entering PIN
+  | "success"
+  | "failed";
+
+const STAGES: { key: Exclude<Status, "idle" | "failed">; label: string; icon: React.ElementType }[] = [
+  { key: "sending", label: "Sending STK", icon: Send },
+  { key: "pending", label: "Awaiting prompt", icon: Clock },
+  { key: "in_progress", label: "Confirming", icon: ShieldCheck },
+  { key: "success", label: "Done", icon: CheckCircle2 },
+];
+
+function stageIndex(s: Status): number {
+  const i = STAGES.findIndex((x) => x.key === s);
+  return i === -1 ? -1 : i;
+}
 
 export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const { user } = useAuth();
   const [phone, setPhone] = useState(user?.phone || "");
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string>("");
+  const [errorHint, setErrorHint] = useState<string>("");
   const [paymentId, setPaymentId] = useState<string>("");
   const [reference, setReference] = useState<string>("");
+  const [elapsed, setElapsed] = useState(0);
   const unsubRef = useRef<null | (() => void)>(null);
   const failsafeRef = useRef<number | null>(null);
+  const tickerRef = useRef<number | null>(null);
   const handledRef = useRef(false);
 
   function cleanup() {
@@ -45,6 +77,10 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       window.clearTimeout(failsafeRef.current);
       failsafeRef.current = null;
     }
+    if (tickerRef.current) {
+      window.clearInterval(tickerRef.current);
+      tickerRef.current = null;
+    }
   }
 
   useEffect(() => {
@@ -52,21 +88,29 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       setPhone(user?.phone || "");
       setStatus("idle");
       setMessage("");
+      setErrorHint("");
       setPaymentId("");
       setReference("");
+      setElapsed(0);
       handledRef.current = false;
     }
     return () => cleanup();
   }, [open, user?.phone]);
 
   const purposeLabel = purpose === "activation" ? "Account Activation" : "VIP Unlock";
+  const isLocked = status === "sending" || status === "pending" || status === "in_progress";
 
   async function handleTerminal(rec: PaymentRecord) {
     if (handledRef.current) return;
+
+    // Promote to in_progress as soon as we see the record progress past PENDING.
+    if (rec.status === "PENDING" && status === "pending") {
+      // still pending, no-op
+    }
+
     if (rec.status === "SUCCESS") {
       handledRef.current = true;
       cleanup();
-      // Only unlock after confirmed M-Pesa success.
       if (user) {
         if (purpose === "activation") await markActivated(user.phone);
         else await markVip(user.phone);
@@ -74,19 +118,36 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       setStatus("success");
       setMessage(
         rec.MpesaReceiptNumber
-          ? `Payment confirmed (${rec.MpesaReceiptNumber})`
+          ? `Payment confirmed • Receipt ${rec.MpesaReceiptNumber}`
           : "M-Pesa payment confirmed!",
       );
-      setTimeout(() => onOpenChange(false), 1800);
+      setErrorHint("");
+      setTimeout(() => onOpenChange(false), 2000);
     } else if (rec.status === "FAILED" || rec.status === "CANCELLED") {
       handledRef.current = true;
       cleanup();
       setStatus("failed");
-      setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
+      const desc = (rec.resultDesc || "").toLowerCase();
+      if (desc.includes("cancel")) {
+        setMessage("You cancelled the M-Pesa prompt.");
+        setErrorHint("Tap Try Again and approve the prompt with your M-Pesa PIN.");
+      } else if (desc.includes("insufficient") || desc.includes("balance")) {
+        setMessage("Insufficient M-Pesa balance.");
+        setErrorHint("Top up your M-Pesa, then try again.");
+      } else if (desc.includes("timeout") || desc.includes("expire")) {
+        setMessage("The STK prompt timed out.");
+        setErrorHint("Make sure your phone is on and unlocked, then retry.");
+      } else if (desc.includes("wrong") || desc.includes("pin")) {
+        setMessage("Incorrect M-Pesa PIN.");
+        setErrorHint("Try again and enter the correct PIN.");
+      } else {
+        setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
+        setErrorHint("Check your phone and try again.");
+      }
     }
   }
 
-  // Failsafe: if no realtime callback updates within 12s, poll status API
+  // Failsafe: poll status if no realtime update within 12s
   function startFailsafe(pid: string, ref: string) {
     let attempts = 0;
     const tick = async () => {
@@ -98,8 +159,6 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         const res = await fetch(`/api/payhero/status?${qs.toString()}`);
         const data = (await res.json()) as { status: string; message?: string };
         if (data.status === "SUCCESS" || data.status === "FAILED" || data.status === "CANCELLED") {
-          // The status route persists terminal state to RTDB, so the realtime
-          // listener will fire handleTerminal. Nothing else to do.
           return;
         }
       } catch {
@@ -108,22 +167,35 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       if (attempts < 30 && !handledRef.current) {
         failsafeRef.current = window.setTimeout(tick, 5000);
       } else if (!handledRef.current) {
+        cleanup();
         setStatus("failed");
-        setMessage("Payment confirmation timed out. If you completed it, retry in a moment.");
+        setMessage("Payment confirmation timed out.");
+        setErrorHint(
+          "If your M-Pesa was charged, contact support with the reference below.",
+        );
       }
     };
     failsafeRef.current = window.setTimeout(tick, 12000);
+  }
+
+  function startTicker() {
+    setElapsed(0);
+    tickerRef.current = window.setInterval(() => {
+      setElapsed((e) => e + 1);
+    }, 1000);
   }
 
   const startPayment = async () => {
     if (!user) return;
     const normalized = normalizePhone(phone);
     if (!isValidKePhone(normalized)) {
-      setMessage("Enter a valid Kenyan phone number.");
+      setErrorHint("");
+      setMessage("Enter a valid Kenyan phone number (07.. or 2547..).");
       return;
     }
     setStatus("sending");
-    setMessage("Sending STK push to your phone...");
+    setMessage("Sending STK push to your phone…");
+    setErrorHint("");
     handledRef.current = false;
     try {
       const res = await fetch("/api/payhero/initiate", {
@@ -145,14 +217,28 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       if (!res.ok || !data.success || !data.paymentId) {
         setStatus("failed");
         setMessage(data.error || "Failed to send STK push.");
+        setErrorHint("Check the phone number and your network, then try again.");
         return;
       }
       setPaymentId(data.paymentId);
       setReference(data.reference || "");
-      setStatus("waiting");
-      setMessage("Check your phone and enter your M-Pesa PIN to authorize the payment.");
+      setStatus("pending");
+      setMessage("STK push sent. Check your phone for the M-Pesa prompt.");
+      startTicker();
 
-      // Realtime: subscribe to the payment node — UI updates instantly on callback.
+      // After 6s, optimistically advance to "in_progress" so the user sees motion.
+      window.setTimeout(() => {
+        if (!handledRef.current) {
+          setStatus((s) => (s === "pending" ? "in_progress" : s));
+          setMessage((m) =>
+            m.startsWith("STK push sent")
+              ? "Enter your M-Pesa PIN on the prompt to authorize the payment."
+              : m,
+          );
+        }
+      }, 6000);
+
+      // Realtime updates from RTDB.
       unsubRef.current = subscribePayment(data.paymentId, (rec) => {
         if (rec) void handleTerminal(rec);
       });
@@ -162,11 +248,21 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     } catch (e) {
       setStatus("failed");
       setMessage(e instanceof Error ? e.message : "Network error.");
+      setErrorHint("Check your internet connection and retry.");
     }
   };
 
+  const cancel = () => {
+    cleanup();
+    setStatus("idle");
+    setMessage("");
+    setErrorHint("");
+  };
+
+  const currentStage = stageIndex(status);
+
   return (
-    <Dialog open={open} onOpenChange={(o) => (status === "waiting" ? null : onOpenChange(o))}>
+    <Dialog open={open} onOpenChange={(o) => (isLocked ? null : onOpenChange(o))}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[image:var(--gradient-cta)] text-primary-foreground shadow-[var(--shadow-cta)]">
@@ -193,16 +289,69 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
             <Button variant="hero" size="lg" className="w-full" onClick={startPayment}>
               Pay KES {amount} with M-Pesa
             </Button>
+            <p className="text-[11px] text-center text-muted-foreground">
+              You'll receive an M-Pesa prompt on your phone. Approve it to complete payment.
+            </p>
           </div>
         )}
 
-        {(status === "sending" || status === "waiting") && (
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm font-medium">{message}</p>
-            {(paymentId || reference) && (
-              <p className="text-[11px] text-muted-foreground">
-                Ref: {reference || paymentId}
+        {isLocked && (
+          <div className="space-y-4 py-2">
+            {/* Stage progress bar */}
+            <div className="flex items-center justify-between gap-1">
+              {STAGES.map((stage, i) => {
+                const Icon = stage.icon;
+                const reached = i <= currentStage;
+                const active = i === currentStage;
+                return (
+                  <div key={stage.key} className="flex flex-1 flex-col items-center gap-1">
+                    <div
+                      className={cn(
+                        "flex h-8 w-8 items-center justify-center rounded-full border transition-colors",
+                        reached
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-muted text-muted-foreground",
+                        active && "ring-2 ring-primary/30",
+                      )}
+                    >
+                      {active ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Icon className="h-4 w-4" />
+                      )}
+                    </div>
+                    <span
+                      className={cn(
+                        "text-[10px] text-center leading-tight",
+                        reached ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {stage.label}
+                    </span>
+                    {i < STAGES.length - 1 && (
+                      <div className="hidden" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="rounded-lg border bg-muted/40 p-3 text-center">
+              <p className="text-sm font-medium">{message}</p>
+              <div className="mt-2 flex items-center justify-center gap-3 text-[11px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {elapsed}s elapsed
+                </span>
+                {(reference || paymentId) && (
+                  <span className="font-mono">Ref: {reference || paymentId}</span>
+                )}
+              </div>
+            </div>
+
+            {status === "in_progress" && (
+              <p className="text-center text-[11px] text-muted-foreground">
+                Don't close this window — confirmation arrives automatically.
               </p>
             )}
           </div>
@@ -210,18 +359,40 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
 
         {status === "success" && (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <CheckCircle2 className="h-12 w-12 text-primary animate-in zoom-in" />
-            <p className="text-sm font-semibold">{message}</p>
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <CheckCircle2 className="h-10 w-10 text-primary animate-in zoom-in" />
+            </div>
+            <p className="text-base font-semibold">Payment Successful</p>
+            <p className="text-sm text-muted-foreground">{message}</p>
           </div>
         )}
 
         {status === "failed" && (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <XCircle className="h-12 w-12 text-destructive" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+              <XCircle className="h-10 w-10 text-destructive" />
+            </div>
+            <p className="text-base font-semibold">Payment Failed</p>
             <p className="text-sm">{message}</p>
-            <Button variant="outline" onClick={() => setStatus("idle")}>
-              Try Again
-            </Button>
+            {errorHint && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-left text-xs text-muted-foreground">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                <span>{errorHint}</span>
+              </div>
+            )}
+            {(reference || paymentId) && (
+              <p className="font-mono text-[11px] text-muted-foreground">
+                Ref: {reference || paymentId}
+              </p>
+            )}
+            <div className="flex w-full gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+              <Button variant="hero" className="flex-1" onClick={cancel}>
+                Try Again
+              </Button>
+            </div>
           </div>
         )}
       </DialogContent>
