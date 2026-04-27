@@ -389,9 +389,6 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                   <Clock className="h-3 w-3" />
                   {elapsed}s elapsed
                 </span>
-                {(reference || paymentId) && (
-                  <span className="font-mono">Ref: {reference || paymentId}</span>
-                )}
               </div>
             </div>
 
@@ -425,11 +422,6 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                 <span>{errorHint}</span>
               </div>
-            )}
-            {(reference || paymentId) && (
-              <p className="font-mono text-[11px] text-muted-foreground">
-                Ref: {reference || paymentId}
-              </p>
             )}
             <div className="flex w-full gap-2">
               <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
