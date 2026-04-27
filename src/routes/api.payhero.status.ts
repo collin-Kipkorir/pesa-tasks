@@ -31,15 +31,15 @@ export const Route = createFileRoute("/api/payhero/status")({
           }
         }
 
-        // If RTDB already has a terminal status, return it.
-        if (doc?.status && doc.status !== "PENDING") {
+        // Terminal statuses short-circuit straight from RTDB.
+        if (doc?.status === "SUCCESS" || doc?.status === "FAILED" || doc?.status === "CANCELLED") {
           return Response.json({ status: doc.status });
         }
 
         // Otherwise fall back to PayHero transaction-status (callback failsafe).
         const reference = doc?.reference || refParam;
         if (!reference) {
-          return Response.json({ status: "PENDING" });
+          return Response.json({ status: doc?.status || "PENDING" });
         }
 
         try {
@@ -58,20 +58,34 @@ export const Route = createFileRoute("/api/payhero/status")({
 
           const s = (data.status || "").toUpperCase();
           const receipt = data.MpesaReceiptNumber || data.mpesa_receipt_number;
+          const desc = (data.ResultDesc || "").toLowerCase();
           const isSuccess = data.ResultCode === 0 || (s === "SUCCESS" && Boolean(receipt));
-          const isFailed = s === "FAILED" || s === "CANCELLED" ||
-            (typeof data.ResultCode === "number" && data.ResultCode !== 0 && !receipt);
+          const isCancelled =
+            s === "CANCELLED" || data.ResultCode === 1032 || desc.includes("cancel");
+          const isFailed =
+            !isSuccess &&
+            !isCancelled &&
+            (s === "FAILED" ||
+              (typeof data.ResultCode === "number" && data.ResultCode !== 0 && !receipt));
+          const isProcessing =
+            !isSuccess &&
+            !isFailed &&
+            !isCancelled &&
+            (s === "PROCESSING" || s === "QUEUED" || desc.includes("processing"));
 
-          let mapped: "PENDING" | "SUCCESS" | "FAILED" = "PENDING";
+          let mapped: "PENDING" | "QUEUED" | "PROCESSING" | "SUCCESS" | "FAILED" | "CANCELLED" =
+            (doc?.status as typeof mapped) || "PENDING";
           if (isSuccess) mapped = "SUCCESS";
+          else if (isCancelled) mapped = "CANCELLED";
           else if (isFailed) mapped = "FAILED";
+          else if (isProcessing) mapped = "PROCESSING";
 
-          // If we have a paymentId and a terminal status, persist it so realtime listener fires.
-          if (pid && mapped !== "PENDING") {
+          // Persist any meaningful change so the realtime listener fires.
+          if (pid && mapped !== doc?.status) {
             await rtdbUpdate(`payments/${pid}`, {
               status: mapped,
-              MpesaReceiptNumber: receipt || "",
-              resultDesc: data.ResultDesc || "",
+              ...(receipt ? { MpesaReceiptNumber: receipt } : {}),
+              ...(data.ResultDesc ? { resultDesc: data.ResultDesc } : {}),
               updatedAt: Date.now(),
             });
           }
