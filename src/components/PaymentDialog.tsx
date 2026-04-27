@@ -423,11 +423,6 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                 <span>{errorHint}</span>
               </div>
             )}
-            {(reference || paymentId) && (
-              <p className="font-mono text-[11px] text-muted-foreground">
-                Ref: {reference || paymentId}
-              </p>
-            )}
             <div className="flex w-full gap-2">
               <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
                 Close
