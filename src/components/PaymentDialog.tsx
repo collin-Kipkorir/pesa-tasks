@@ -58,6 +58,48 @@ function stageIndex(s: Status): number {
   return i === -1 ? -1 : i;
 }
 
+// Single source of truth: RTDB PaymentStatus → UI Status.
+// PENDING        → "pending"      (record created, STK not yet acknowledged)
+// QUEUED         → "in_progress"  (STK push delivered, prompt on phone)
+// PROCESSING     → "in_progress"  (user entering PIN / awaiting M-Pesa)
+// SUCCESS        → "success"
+// FAILED|CANCEL  → "failed"
+function mapRtdbStatus(s: PaymentStatus): Status {
+  switch (s) {
+    case "PENDING":
+      return "pending";
+    case "QUEUED":
+    case "PROCESSING":
+      return "in_progress";
+    case "SUCCESS":
+      return "success";
+    case "FAILED":
+    case "CANCELLED":
+      return "failed";
+    default:
+      return "pending";
+  }
+}
+
+function messageFor(s: PaymentStatus): string {
+  switch (s) {
+    case "PENDING":
+      return "Sending STK push to your phone…";
+    case "QUEUED":
+      return "STK push delivered. Check your phone for the M-Pesa prompt.";
+    case "PROCESSING":
+      return "Enter your M-Pesa PIN to authorize the payment.";
+    case "SUCCESS":
+      return "M-Pesa payment confirmed!";
+    case "FAILED":
+      return "Payment failed.";
+    case "CANCELLED":
+      return "You cancelled the M-Pesa prompt.";
+    default:
+      return "";
+  }
+}
+
 export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const { user } = useAuth();
   const [phone, setPhone] = useState(user?.phone || "");
