@@ -212,7 +212,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       try {
         const qs = new URLSearchParams({ paymentId: pid });
         if (ref) qs.set("reference", ref);
-        const res = await fetch(`/api/payhero/status?${qs.toString()}`);
+  const res = await fetch(`/api/status?${qs.toString()}`);
         const data = (await res.json()) as { status: string; message?: string };
         if (data.status === "SUCCESS" || data.status === "FAILED" || data.status === "CANCELLED") {
           return;
@@ -254,7 +254,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     setErrorHint("");
     handledRef.current = false;
     try {
-      const res = await fetch("/api/payhero/initiate", {
+      const res = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
