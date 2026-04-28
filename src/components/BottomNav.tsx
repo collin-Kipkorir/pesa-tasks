@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { NavLink } from "react-router-dom";
 import { Home as HomeIcon, Gift, Wallet, User } from "lucide-react";
 
 const items = [
@@ -13,16 +13,19 @@ export function BottomNav() {
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-card">
       <div className="mx-auto grid max-w-3xl grid-cols-4">
         {items.map((it) => (
-          <Link
+          <NavLink
             key={it.to}
             to={it.to}
-            className="flex flex-col items-center gap-1 py-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-            activeProps={{ className: "text-primary" }}
-            activeOptions={{ exact: true }}
+            end
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors ${
+                isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              }`
+            }
           >
             <it.icon className="h-5 w-5" />
             {it.label}
-          </Link>
+          </NavLink>
         ))}
       </div>
     </nav>
