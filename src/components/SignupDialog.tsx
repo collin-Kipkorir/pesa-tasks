@@ -29,7 +29,7 @@ export function SignupDialog({ open, onOpenChange }: Props) {
     setSubmitted(true);
     setTimeout(() => {
       onOpenChange(false);
-      navigate({ to: "/dashboard" });
+      navigate("/dashboard");
     }, 1200);
   };
 
@@ -81,7 +81,7 @@ export function SignupDialog({ open, onOpenChange }: Props) {
                   type="button"
                   onClick={() => {
                     onOpenChange(false);
-                    navigate({ to: "/login" });
+                    navigate("/login");
                   }}
                   className="font-semibold text-primary hover:underline"
                 >
