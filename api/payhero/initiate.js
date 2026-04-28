@@ -26,8 +26,8 @@ export default async function handler(req, res) {
     const payerMsisdn = toMsisdn(body.phone);
     const userPhone = normalizePhone(body.userPhone);
 
-    const auth = process.env.PAYHERO_AUTH_TOKEN;
-    const channelId = Number(process.env.PAYHERO_CHANNEL_ID || "3838");
+  const auth = process.env.PAYHERO_AUTH_TOKEN || process.env.VITE_PAYHERO_AUTH_TOKEN;
+  const channelId = Number(process.env.PAYHERO_CHANNEL_ID || process.env.VITE_PAYHERO_CHANNEL_ID || "3838");
     if (!auth) {
       return res.status(500).json({ success: false, error: "PayHero not configured" });
     }

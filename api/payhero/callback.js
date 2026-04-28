@@ -2,7 +2,7 @@ import { rtdbGet, rtdbUpdate } from "../../_lib/rtdb-server.js";
 
 export default async function handler(req, res) {
   try {
-    const pidFromQuery = req.query?.pid || "";
+  const pidFromQuery = req.query?.pid || "";
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
     const r = body.response;
     if (!r) return res.status(200).json({ ok: true });

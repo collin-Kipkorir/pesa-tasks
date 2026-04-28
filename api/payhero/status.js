@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   if (!reference) return res.status(200).json({ status: doc?.status || "PENDING" });
 
   try {
-    const auth = process.env.PAYHERO_AUTH_TOKEN;
+  const auth = process.env.PAYHERO_AUTH_TOKEN || process.env.VITE_PAYHERO_AUTH_TOKEN;
     const r = await fetch(`${STATUS_URL}?reference=${encodeURIComponent(reference)}`, {
       headers: auth ? { Authorization: auth } : {},
     });
