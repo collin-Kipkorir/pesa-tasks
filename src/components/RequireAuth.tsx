@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Loader2 } from "lucide-react";
 
@@ -11,14 +11,8 @@ export function RequireAuth({ children, requireAdmin = false }: { children: Reac
 
   useEffect(() => {
     if (loading) return;
-    if (!user) {
-      navigate({ to: "/login" });
-      return;
-    }
-    if (requireAdmin && !isAdmin) {
-      navigate({ to: "/dashboard" });
-      return;
-    }
+    if (!user) { navigate("/login"); return; }
+    if (requireAdmin && !isAdmin) { navigate("/dashboard"); return; }
     setReady(true);
   }, [user, loading, isAdmin, requireAdmin, navigate]);
 

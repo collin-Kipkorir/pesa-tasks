@@ -1,28 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { BottomNav } from "@/components/BottomNav";
 import { RequireAuth } from "@/components/RequireAuth";
 import { useAuth } from "@/lib/auth";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-} from "recharts";
-
-export const Route = createFileRoute("/rewards")({
-  head: () => ({ meta: [{ title: "Rewards — Pesatask" }] }),
-  component: () => (
-    <RequireAuth>
-      <RewardsPage />
-    </RequireAuth>
-  ),
-});
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from "recharts";
 
 type RewardEntry = { amount: number; source: string; date: number; type: string };
 
-function RewardsPage() {
+function RewardsInner() {
   const { user } = useAuth();
   const rewards = Object.values((user?.rewards as Record<string, RewardEntry>) || {})
     .filter((r) => r.amount > 0)
@@ -56,13 +39,7 @@ function RewardsPage() {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="day" tickLine={false} axisLine={{ stroke: "oklch(0.6 0.22 27)" }} tick={{ fontSize: 11 }} />
                 <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="oklch(0.5 0.15 145)"
-                  strokeWidth={2}
-                  fill="url(#rewardsFill)"
-                />
+                <Area type="monotone" dataKey="value" stroke="oklch(0.5 0.15 145)" strokeWidth={2} fill="url(#rewardsFill)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -76,9 +53,7 @@ function RewardsPage() {
 
           <div className="mt-4 overflow-hidden rounded-lg border">
             <div className="grid grid-cols-3 bg-muted/60 px-4 py-2 text-xs font-semibold">
-              <span>Date</span>
-              <span className="text-center">Description</span>
-              <span className="text-right">Amount</span>
+              <span>Date</span><span className="text-center">Description</span><span className="text-right">Amount</span>
             </div>
             {rewards.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">No rewards yet.</p>
@@ -87,17 +62,18 @@ function RewardsPage() {
                 <div key={i} className="grid grid-cols-3 items-center px-4 py-3 text-sm">
                   <span>{new Date(r.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
                   <span className="text-center">{r.source}</span>
-                  <span className="text-right font-semibold text-primary">
-                    +KES {r.amount.toLocaleString()}
-                  </span>
+                  <span className="text-right font-semibold text-primary">+KES {r.amount.toLocaleString()}</span>
                 </div>
               ))
             )}
           </div>
         </section>
       </main>
-
       <BottomNav />
     </div>
   );
+}
+
+export default function Rewards() {
+  return <RequireAuth><RewardsInner /></RequireAuth>;
 }
