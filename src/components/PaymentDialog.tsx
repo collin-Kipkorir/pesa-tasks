@@ -264,15 +264,30 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
           userPhone: user.phone,
         }),
       });
-      const data = (await res.json()) as {
-        success: boolean;
-        paymentId?: string;
-        reference?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.success || !data.paymentId) {
+
+      // Try to parse JSON, but gracefully handle non-JSON responses (HTML/error pages).
+      let data: any = null;
+      let rawText = "";
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        // JSON parse failed — fallback to text so we can show a readable error
+        rawText = (await res.text().catch(() => "")).slice(0, 2000);
+        console.error("/api/payhero/initiate returned non-JSON response:", rawText, jsonErr);
+      }
+
+      if (!res.ok) {
+        const errMsg = (data && (data.error || data.message)) || rawText || `Server responded ${res.status}`;
         setStatus("failed");
-        setMessage(data.error || "Failed to send STK push.");
+        setMessage(errMsg);
+        setErrorHint("Check the phone number and your network, then try again.");
+        return;
+      }
+
+      if (!data || !data.success || !data.paymentId) {
+        const errMsg = (data && (data.error || data.message)) || rawText || "Failed to send STK push.";
+        setStatus("failed");
+        setMessage(errMsg);
         setErrorHint("Check the phone number and your network, then try again.");
         return;
       }
@@ -407,6 +422,21 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
             </div>
             <p className="text-base font-semibold">Payment Successful</p>
             <p className="text-sm text-muted-foreground">{message}</p>
+            {reference && (
+              <div className="mt-2 flex items-center gap-2 text-[12px] text-muted-foreground">
+                <span className="font-mono">Reference: {reference}</span>
+                <button
+                  className="text-xs text-primary underline"
+                  onClick={() => {
+                    try {
+                      navigator.clipboard?.writeText(reference);
+                    } catch {}
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -421,6 +451,21 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
               <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-left text-xs text-muted-foreground">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
                 <span>{errorHint}</span>
+              </div>
+            )}
+            {reference && (
+              <div className="mt-2 text-[12px] text-muted-foreground">
+                <div className="font-mono">Reference: {reference}</div>
+                <button
+                  className="mt-1 text-xs text-primary underline"
+                  onClick={() => {
+                    try {
+                      navigator.clipboard?.writeText(reference);
+                    } catch {}
+                  }}
+                >
+                  Copy reference
+                </button>
               </div>
             )}
             <div className="flex w-full gap-2">
