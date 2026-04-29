@@ -111,6 +111,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const unsubRef = useRef<null | (() => void)>(null);
   const failsafeRef = useRef<number | null>(null);
+  const pollRef = useRef<number | null>(null);
   const tickerRef = useRef<number | null>(null);
   const handledRef = useRef(false);
 
@@ -122,6 +123,10 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     if (failsafeRef.current) {
       window.clearTimeout(failsafeRef.current);
       failsafeRef.current = null;
+    }
+    if (pollRef.current) {
+      window.clearTimeout(pollRef.current);
+      pollRef.current = null;
     }
     if (tickerRef.current) {
       window.clearInterval(tickerRef.current);
@@ -203,25 +208,52 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     }
   }
 
-  // Failsafe: poll status if no realtime update within 12s
-  function startFailsafe(pid: string, ref: string) {
+  // Active polling: hit /api/payhero/status every 3s and translate the
+  // returned status into the same UI stage updates as the realtime listener.
+  function startPolling(pid: string, refStr: string) {
     let attempts = 0;
+    const POLL_MS = 3000;
+    const MAX_ATTEMPTS = 60; // ~3 minutes
+
     const tick = async () => {
       if (handledRef.current) return;
       attempts += 1;
       try {
         const qs = new URLSearchParams({ paymentId: pid });
-        if (ref) qs.set("reference", ref);
-  const res = await fetch(`/api/status?${qs.toString()}`);
+        if (refStr) qs.set("reference", refStr);
+        const res = await fetch(`/api/payhero/status?${qs.toString()}`);
         const data = (await res.json()) as { status: string; message?: string };
-        if (data.status === "SUCCESS" || data.status === "FAILED" || data.status === "CANCELLED") {
+        const s = (data.status || "").toUpperCase() as PaymentStatus;
+
+        if (s === "SUCCESS" || s === "FAILED" || s === "CANCELLED") {
+          // Synthesize a minimal record so handleRecord runs the terminal flow.
+          await handleRecord({
+            paymentId: pid,
+            phone: user?.phone || "",
+            payerPhone: "",
+            amount,
+            purpose,
+            status: s,
+            reference: refStr,
+            resultDesc: data.message,
+            createdAt: Date.now(),
+          });
           return;
         }
+
+        // Non-terminal: sync stage from the polled status.
+        const valid: PaymentStatus[] = ["PENDING", "QUEUED", "PROCESSING"];
+        if (valid.includes(s)) {
+          const ui = mapRtdbStatus(s);
+          setStatus(ui);
+          setMessage(messageFor(s));
+        }
       } catch {
-        // ignore
+        // ignore transient network errors
       }
-      if (attempts < 30 && !handledRef.current) {
-        failsafeRef.current = window.setTimeout(tick, 5000);
+
+      if (!handledRef.current && attempts < MAX_ATTEMPTS) {
+        pollRef.current = window.setTimeout(tick, POLL_MS);
       } else if (!handledRef.current) {
         cleanup();
         setStatus("failed");
@@ -231,7 +263,8 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         );
       }
     };
-    failsafeRef.current = window.setTimeout(tick, 12000);
+
+    pollRef.current = window.setTimeout(tick, POLL_MS);
   }
 
   function startTicker() {
@@ -304,8 +337,8 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         if (rec) void handleRecord(rec);
       });
 
-      // Failsafe in case the callback never fires.
-      startFailsafe(data.paymentId, data.reference || "");
+      // Active polling against /api/payhero/status as a backup to realtime.
+      startPolling(data.paymentId, data.reference || "");
     } catch (e) {
       setStatus("failed");
       setMessage(e instanceof Error ? e.message : "Network error.");
