@@ -337,8 +337,8 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         if (rec) void handleRecord(rec);
       });
 
-      // Failsafe in case the callback never fires.
-      startFailsafe(data.paymentId, data.reference || "");
+      // Active polling against /api/payhero/status as a backup to realtime.
+      startPolling(data.paymentId, data.reference || "");
     } catch (e) {
       setStatus("failed");
       setMessage(e instanceof Error ? e.message : "Network error.");
