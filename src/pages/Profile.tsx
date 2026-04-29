@@ -26,8 +26,8 @@ function ProfileInner() {
 
   const handleWithdraw = async () => {
     if (!user.activated) { setActivateOpen(true); return; }
-    const amt = Number(amount);
-    if (!amt || amt < 50) { toast.error("Enter at least KES 50."); return; }
+  const amt = Number(amount);
+  if (!amt || amt < 5000) { toast.error("Enter at least KES 5,000."); return; }
     if (amt > user.balance) { toast.error("Insufficient balance."); return; }
     setSubmitting(true);
     try {

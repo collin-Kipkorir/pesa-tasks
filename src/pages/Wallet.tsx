@@ -14,7 +14,9 @@ function WalletInner() {
   const [activateOpen, setActivateOpen] = useState(false);
   const navigate = useNavigate();
 
-  const rewards = Object.values((user?.rewards as Record<string, { amount: number; date: number; type: string }>) || {});
+  const rewards = Object.values(
+    (user?.rewards as Record<string, { amount: number; date: number; type: string }>) || {},
+  );
   const today = new Date();
   const weekly = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today);
@@ -27,7 +29,16 @@ function WalletInner() {
   });
 
   const handleWithdraw = () => {
-    if (!user?.activated) { setActivateOpen(true); return; }
+    if (!user?.activated) {
+      setActivateOpen(true);
+      return;
+    }
+    // require minimum withdrawal amount
+    if ((user?.balance || 0) < 5000) {
+      // redirect to profile so user sees their balance and withdraw form
+      navigate("/profile");
+      return;
+    }
     navigate("/profile");
   };
 

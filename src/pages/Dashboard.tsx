@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
-  Smartphone, Menu, Wallet, AlertTriangle, Crown, Zap, Wifi, Lightbulb, Lock, CheckCircle2, Sparkles,
+  Smartphone, Wallet, AlertTriangle, Crown, Zap, Wifi, Lightbulb, Lock, CheckCircle2, Sparkles,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -12,7 +12,30 @@ import { useAuth } from "@/lib/auth";
 import { useSurveys } from "@/lib/use-surveys";
 import { ACTIVATION_FEE, VIP_FEE, DAILY_FREE_LIMIT, DAILY_VIP_LIMIT } from "@/lib/firebase";
 import type { Survey } from "@/lib/surveys-seed";
+import { useMemo } from "react";
 import { toast } from "sonner";
+
+const DUMMY_NAMES = [
+  "Mary Wanjiku","John Mwangi","Daniel Kiptoo","James Otieno","Aisha Mohamed","Peter Kamau","Esther Njoki","Samuel Kiplagat","Grace Njeri","Michael Ouma","Alice Wanjiru","David Mutua","Susan Achieng","Paul Kiprono","Ruth Wambui","Kevin Mworia","Lilian Chebet","Mark Kipkorir","Faith Onyango","Benjamin Kibet","Rose Atieno","Victor Mwaura","Joan Njeri","Stephen Korir","Linda Kibet","Tom Omoding","Cynthia Wairimu","Eric Ndegwa","Nancy Chepkemoi","Peter Njenga",
+];
+
+function generateDummyPayouts(count = 30) {
+  // produce up to `count` unique payouts by sampling DUMMY_NAMES without replacement
+  const names = [...DUMMY_NAMES];
+  // shuffle names
+  for (let i = names.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [names[i], names[j]] = [names[j], names[i]];
+  }
+  const take = Math.min(count, names.length);
+  const arr: Array<{ name: string; amount: number }> = [];
+  for (let i = 0; i < take; i++) {
+    const name = names[i];
+    const amount = Math.floor(5000 + Math.random() * 20000);
+    arr.push({ name, amount });
+  }
+  return arr;
+}
 
 const ICON_MAP = { smartphone: Smartphone, zap: Zap, wifi: Wifi, lightbulb: Lightbulb } as const;
 
@@ -24,12 +47,22 @@ const fakePayouts = [
   { name: "Peter Kamau", amount: 22100 },
 ];
 
+import { useEffect } from "react";
+
 function LivePayoutTicker() {
+  const [items, setItems] = useState<Array<{ name: string; amount: number }>>(fakePayouts);
+  const [dummy] = useState(() => generateDummyPayouts(30));
+  useEffect(() => setItems(dummy), [dummy]);
+
   const [idx, setIdx] = useState(0);
-  if (typeof window !== "undefined") {
-    setTimeout(() => setIdx((i) => (i + 1) % fakePayouts.length), 3000);
-  }
-  const p = fakePayouts[idx];
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % Math.max(1, items.length)), 3000);
+    return () => clearInterval(t);
+  }, [items]);
+
+  const p = items[idx] || dummy[0] || fakePayouts[0];
+  // no per-tick floating toast: ticker text itself is sufficient
+
   return (
     <div key={idx} className="rounded-lg px-3 py-2 text-xs font-medium text-primary-foreground shadow-sm animate-in fade-in slide-in-from-right-2" style={{ background: "var(--gradient-cta)" }}>
       🎉 <span className="font-bold">{p.name}</span> got <span className="font-bold">KES {p.amount.toLocaleString()}</span> 💸 to M-Pesa
@@ -61,6 +94,24 @@ function DashboardInner() {
   const todayCount = user?.vip ? vipToday + freeToday : freeToday;
   const dailyLimitHit = todayCount >= dailyLimit;
 
+  // shuffle surveys on each page load and place completed surveys at the end
+  const shuffledSurveys = useMemo(() => {
+    const arr = [...surveys];
+    // Fisher-Yates shuffle
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    // stable partition: incomplete first, completed at the end
+    const incomplete: Survey[] = [];
+    const completedList: Survey[] = [];
+    for (const s of arr) {
+      if (completed[s.id]) completedList.push(s);
+      else incomplete.push(s);
+    }
+    return [...incomplete, ...completedList];
+  }, [surveys, completed]);
+
   const startTask = (s: Survey) => {
     if (s.category === "vip" && !user?.vip) { setUnlockOpen(true); return; }
     if (dailyLimitHit) {
@@ -80,7 +131,6 @@ function DashboardInner() {
       <header className="sticky top-0 z-20 border-b bg-card">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <button className="rounded-md p-1.5 hover:bg-muted" aria-label="Menu"><Menu className="h-5 w-5" /></button>
             <div>
               <h1 className="text-base font-bold leading-tight">Pesatask Paid Surveys</h1>
               <p className="text-[11px] text-muted-foreground">Earn instantly via M-Pesa</p>
@@ -137,7 +187,7 @@ function DashboardInner() {
 
         <div className="mt-4 space-y-4">
           {loading && <p className="text-sm text-muted-foreground">Loading surveys...</p>}
-          {surveys.map((t) => {
+          {shuffledSurveys.map((t) => {
             const Icon = ICON_MAP[t.icon] || Smartphone;
             const isVip = t.category === "vip";
             const isVipLocked = isVip && !user?.vip;
