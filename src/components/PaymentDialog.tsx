@@ -225,8 +225,52 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       } catch {
         // ignore
       }
-      if (attempts < 30 && !handledRef.current) {
-        failsafeRef.current = window.setTimeout(tick, 5000);
+  // Active polling: hit /api/payhero/status every 3s and translate the
+  // returned status into the same UI stage updates as the realtime listener.
+  function startPolling(pid: string, refStr: string) {
+    let attempts = 0;
+    const POLL_MS = 3000;
+    const MAX_ATTEMPTS = 60; // ~3 minutes
+
+    const tick = async () => {
+      if (handledRef.current) return;
+      attempts += 1;
+      try {
+        const qs = new URLSearchParams({ paymentId: pid });
+        if (refStr) qs.set("reference", refStr);
+        const res = await fetch(`/api/payhero/status?${qs.toString()}`);
+        const data = (await res.json()) as { status: string; message?: string };
+        const s = (data.status || "").toUpperCase() as PaymentStatus;
+
+        if (s === "SUCCESS" || s === "FAILED" || s === "CANCELLED") {
+          // Synthesize a minimal record so handleRecord runs the terminal flow.
+          await handleRecord({
+            paymentId: pid,
+            phone: user?.phone || "",
+            payerPhone: "",
+            amount,
+            purpose,
+            status: s,
+            reference: refStr,
+            resultDesc: data.message,
+            createdAt: Date.now(),
+          });
+          return;
+        }
+
+        // Non-terminal: sync stage from the polled status.
+        const valid: PaymentStatus[] = ["PENDING", "QUEUED", "PROCESSING"];
+        if (valid.includes(s)) {
+          const ui = mapRtdbStatus(s);
+          setStatus(ui);
+          setMessage(messageFor(s));
+        }
+      } catch {
+        // ignore transient network errors
+      }
+
+      if (!handledRef.current && attempts < MAX_ATTEMPTS) {
+        pollRef.current = window.setTimeout(tick, POLL_MS);
       } else if (!handledRef.current) {
         cleanup();
         setStatus("failed");
@@ -236,7 +280,8 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         );
       }
     };
-    failsafeRef.current = window.setTimeout(tick, 12000);
+
+    pollRef.current = window.setTimeout(tick, POLL_MS);
   }
 
   function startTicker() {
