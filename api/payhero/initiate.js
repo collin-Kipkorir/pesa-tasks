@@ -1,10 +1,11 @@
-// PayHero initiate handler per documentation
-import { rtdbSet, rtdbUpdate } from "../../_lib/rtdb-server.js";
-import { toMsisdn, normalizePhone, isValidKePhone } from "../../_lib/phone.js";
-
-const DEFAULT_PAYMENT_URL = process.env.VITE_PAYHERO_BASE_URL
-  ? `${process.env.VITE_PAYHERO_BASE_URL.replace(/\/$/, "")}/api/v2/payments`
-  : "https://backend.payhero.co.ke/api/v2/payments";
+import { rtdbSet, rtdbUpdate } from "../_lib/rtdb-server.js";
+import { toMsisdn, normalizePhone, isValidKePhone } from "../_lib/phone.js";
+import {
+  buildCallbackUrl,
+  parseJsonSafe,
+  payHeroConfig,
+  resolvePaymentStatus,
+} from "../_lib/payhero.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -14,40 +15,31 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
     const amount = Number(body.amount || 0);
+
     if (!amount || amount < 1) {
       return res.status(400).json({ success: false, error: "Invalid amount" });
     }
+
     if (!body.phone) {
       return res.status(400).json({ success: false, error: "Missing phone" });
     }
+
     const localPayer = normalizePhone(body.phone);
     if (!isValidKePhone(localPayer)) {
       return res.status(400).json({ success: false, error: "Invalid phone" });
     }
 
-    const payerMsisdn = toMsisdn(body.phone);
-    const userPhone = normalizePhone(body.userPhone || "");
-
-    const auth = process.env.PAYHERO_AUTH_TOKEN || process.env.VITE_PAYHERO_AUTH_TOKEN;
-    const channelId = Number(
-      process.env.PAYHERO_CHANNEL_ID || process.env.VITE_PAYHERO_CHANNEL_ID || "3838"
-    );
-    const paymentUrl = process.env.PAYHERO_PAYMENT_URL || DEFAULT_PAYMENT_URL;
-    if (!auth) {
+    if (!payHeroConfig.authToken) {
       return res.status(500).json({ success: false, error: "PayHero not configured" });
     }
 
+    const payerMsisdn = toMsisdn(body.phone);
+    const userPhone = normalizePhone(body.userPhone || "");
     const paymentId = `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const externalReference =
+    const reference =
       body.externalReference ||
       `${(body.purpose || "PAY").toString().toUpperCase()}-${userPhone || "guest"}-${Date.now()}`;
-
-    const proto =
-      req.headers["x-forwarded-proto"] || req.headers["x-forwarded-protocol"] || "https";
-    const host = req.headers.host || process.env.VERCEL_URL || "";
-    const publicBase =
-      process.env.PUBLIC_BASE_URL || process.env.VITE_PAYHERO_CALLBACK_URL || (host ? `${proto}://${host}` : "");
-    const callbackUrl = `${publicBase.replace(/\/$/, "")}/api/payment-callback?pid=${paymentId}`;
+    const callbackUrl = buildCallbackUrl(req, paymentId);
 
     await rtdbSet(`payments/${paymentId}`, {
       paymentId,
@@ -56,49 +48,82 @@ export default async function handler(req, res) {
       amount,
       purpose: body.purpose || "payment",
       status: "PENDING",
-      externalReference,
+      reference,
+      externalReference: reference,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
 
     const payload = {
       amount,
       phone_number: payerMsisdn,
-      channel_id: channelId,
+      channel_id: Number(payHeroConfig.channelId),
       provider: "m-pesa",
-      external_reference: externalReference,
-      customer_name: userPhone || undefined,
+      external_reference: reference,
+      customer_name: body.customerName || userPhone || "Customer",
       callback_url: callbackUrl,
     };
 
-    const r = await fetch(paymentUrl, {
+    const response = await fetch(payHeroConfig.paymentUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: auth },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: payHeroConfig.authToken,
+      },
       body: JSON.stringify(payload),
     });
 
-    const data = await (async () => {
-      try { return await r.json(); } catch { return null; }
-    })();
+    const data = await parseJsonSafe(response);
 
-    if (!r.ok) {
-      const msg = (data && (data.error || data.error_message)) || `PayHero ${r.status}`;
-      await rtdbUpdate(`payments/${paymentId}`, { status: "FAILED", resultDesc: msg, updatedAt: Date.now() });
-      return res.status(400).json({ success: false, paymentId, error: msg });
+    if (!response.ok) {
+      const message =
+        (data && (data.error || data.error_message || data.message)) ||
+        `PayHero ${response.status}`;
+      await rtdbUpdate(`payments/${paymentId}`, {
+        status: "FAILED",
+        resultDesc: message,
+        updatedAt: Date.now(),
+      });
+      return res.status(400).json({ success: false, paymentId, error: message });
     }
 
+    const checkoutRequestId =
+      data?.CheckoutRequestID || data?.checkoutRequestId || data?.checkout_request_id || "";
+    const payHeroStatus =
+      resolvePaymentStatus({
+        status: data?.Status || data?.status || "QUEUED",
+        resultCode: data?.ResultCode ?? data?.result_code,
+        resultDesc: data?.ResultDesc || data?.message || "",
+        mpesaReceiptNumber:
+          data?.MpesaReceiptNumber || data?.mpesa_receipt_number || "",
+      }) || "QUEUED";
+
     await rtdbUpdate(`payments/${paymentId}`, {
-      status: data?.status || "QUEUED",
-      reference: data?.reference || "",
-      CheckoutRequestID: data?.CheckoutRequestID || data?.checkoutRequestId || "",
+      status: payHeroStatus,
+      reference,
+      externalReference: reference,
+      CheckoutRequestID: checkoutRequestId,
+      resultDesc: data?.ResultDesc || data?.message || "",
       updatedAt: Date.now(),
     });
 
-    if (data?.reference) await rtdbSet(`paymentRefs/${data.reference}`, paymentId);
-    if (data?.CheckoutRequestID) await rtdbSet(`paymentRefs/${data.CheckoutRequestID}`, paymentId);
-    await rtdbSet(`paymentRefs/${externalReference}`, paymentId);
+    if (checkoutRequestId) {
+      await rtdbSet(`paymentRefs/${checkoutRequestId}`, paymentId);
+    }
+    await rtdbSet(`paymentRefs/${reference}`, paymentId);
 
-    return res.status(201).json({ success: true, status: data?.status || "QUEUED", reference: data?.reference, CheckoutRequestID: data?.CheckoutRequestID || data?.checkoutRequestId, paymentId, externalReference });
-  } catch (e) {
-    return res.status(500).json({ success: false, error: e?.message || "Unknown error" });
+    return res.status(201).json({
+      success: true,
+      paymentId,
+      status: payHeroStatus,
+      reference,
+      CheckoutRequestID: checkoutRequestId,
+      callback_url: callbackUrl,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
   }
 }

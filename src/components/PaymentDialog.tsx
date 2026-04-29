@@ -37,35 +37,28 @@ interface Props {
   amount: number;
 }
 
-// UI status state (richer than the DB enum so we can show staged progress)
 type Status =
   | "idle"
-  | "sending" // calling /api/payhero/initiate
-  | "pending" // STK queued, waiting for user to see prompt
-  | "in_progress" // user has the prompt / entering PIN
+  | "sending"
+  | "pending"
+  | "in_progress"
   | "success"
   | "failed";
 
 const STAGES: { key: Exclude<Status, "idle" | "failed">; label: string; icon: React.ElementType }[] = [
   { key: "sending", label: "Sending STK", icon: Send },
-  { key: "pending", label: "Awaiting prompt", icon: Clock },
+  { key: "pending", label: "Waiting", icon: Clock },
   { key: "in_progress", label: "Confirming", icon: ShieldCheck },
   { key: "success", label: "Done", icon: CheckCircle2 },
 ];
 
-function stageIndex(s: Status): number {
-  const i = STAGES.findIndex((x) => x.key === s);
-  return i === -1 ? -1 : i;
+function stageIndex(status: Status): number {
+  const index = STAGES.findIndex((stage) => stage.key === status);
+  return index === -1 ? -1 : index;
 }
 
-// Single source of truth: RTDB PaymentStatus → UI Status.
-// PENDING        → "pending"      (record created, STK not yet acknowledged)
-// QUEUED         → "in_progress"  (STK push delivered, prompt on phone)
-// PROCESSING     → "in_progress"  (user entering PIN / awaiting M-Pesa)
-// SUCCESS        → "success"
-// FAILED|CANCEL  → "failed"
-function mapRtdbStatus(s: PaymentStatus): Status {
-  switch (s) {
+function mapRtdbStatus(status: PaymentStatus): Status {
+  switch (status) {
     case "PENDING":
       return "pending";
     case "QUEUED":
@@ -81,20 +74,20 @@ function mapRtdbStatus(s: PaymentStatus): Status {
   }
 }
 
-function messageFor(s: PaymentStatus): string {
-  switch (s) {
+function messageFor(status: PaymentStatus): string {
+  switch (status) {
     case "PENDING":
-      return "Sending STK push to your phone…";
+      return "Waiting for payment...";
     case "QUEUED":
-      return "STK push delivered. Check your phone for the M-Pesa prompt.";
+      return "Check your phone and enter M-PESA PIN.";
     case "PROCESSING":
-      return "Enter your M-Pesa PIN to authorize the payment.";
+      return "Waiting for M-PESA confirmation.";
     case "SUCCESS":
-      return "M-Pesa payment confirmed!";
+      return "M-PESA payment confirmed.";
     case "FAILED":
       return "Payment failed.";
     case "CANCELLED":
-      return "You cancelled the M-Pesa prompt.";
+      return "You cancelled the M-PESA prompt.";
     default:
       return "";
   }
@@ -104,16 +97,16 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const { user } = useAuth();
   const [phone, setPhone] = useState(user?.phone || "");
   const [status, setStatus] = useState<Status>("idle");
-  const [message, setMessage] = useState<string>("");
-  const [errorHint, setErrorHint] = useState<string>("");
-  const [paymentId, setPaymentId] = useState<string>("");
-  const [reference, setReference] = useState<string>("");
+  const [message, setMessage] = useState("");
+  const [errorHint, setErrorHint] = useState("");
+  const [paymentId, setPaymentId] = useState("");
+  const [reference, setReference] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const unsubRef = useRef<null | (() => void)>(null);
   const failsafeRef = useRef<number | null>(null);
-  const pollRef = useRef<number | null>(null);
   const tickerRef = useRef<number | null>(null);
   const handledRef = useRef(false);
+  const statusRetryRef = useRef(0);
 
   function cleanup() {
     if (unsubRef.current) {
@@ -124,14 +117,11 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       window.clearTimeout(failsafeRef.current);
       failsafeRef.current = null;
     }
-    if (pollRef.current) {
-      window.clearTimeout(pollRef.current);
-      pollRef.current = null;
-    }
     if (tickerRef.current) {
       window.clearInterval(tickerRef.current);
       tickerRef.current = null;
     }
+    statusRetryRef.current = 0;
   }
 
   useEffect(() => {
@@ -144,150 +134,160 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
       setReference("");
       setElapsed(0);
       handledRef.current = false;
+      statusRetryRef.current = 0;
     }
+
     return () => cleanup();
   }, [open, user?.phone]);
 
   const purposeLabel = purpose === "activation" ? "Account Activation" : "VIP Unlock";
   const isLocked = status === "sending" || status === "pending" || status === "in_progress";
 
-  // Single handler driven entirely by the RTDB record. Maps every PaymentStatus
-  // value into the corresponding UI stage — no client-side timers required.
-  async function handleRecord(rec: PaymentRecord) {
+  async function handleRecord(record: PaymentRecord) {
     if (handledRef.current) return;
 
-    const uiStatus = mapRtdbStatus(rec.status);
+    const uiStatus = mapRtdbStatus(record.status);
 
-    // Non-terminal: just sync stage + message and keep listening.
     if (uiStatus === "pending" || uiStatus === "in_progress") {
       setStatus(uiStatus);
-      setMessage(messageFor(rec.status));
+      setMessage(messageFor(record.status));
       setErrorHint("");
       return;
     }
 
-    // Terminal: success
     if (uiStatus === "success") {
       handledRef.current = true;
       cleanup();
+
       if (user) {
         if (purpose === "activation") await markActivated(user.phone);
         else await markVip(user.phone);
       }
+
       setStatus("success");
       setMessage(
-        rec.MpesaReceiptNumber
-          ? `Payment confirmed • Receipt ${rec.MpesaReceiptNumber}`
-          : "M-Pesa payment confirmed!",
+        record.MpesaReceiptNumber
+          ? `Payment confirmed - Receipt ${record.MpesaReceiptNumber}`
+          : "M-PESA payment confirmed.",
       );
       setErrorHint("");
-      setTimeout(() => onOpenChange(false), 2000);
+      window.setTimeout(() => onOpenChange(false), 2000);
       return;
     }
 
-    // Terminal: failed / cancelled — derive a friendlier message.
     handledRef.current = true;
     cleanup();
     setStatus("failed");
-    const desc = (rec.resultDesc || "").toLowerCase();
-    if (rec.status === "CANCELLED" || desc.includes("cancel")) {
-      setMessage("You cancelled the M-Pesa prompt.");
-      setErrorHint("Tap Try Again and approve the prompt with your M-Pesa PIN.");
+
+    const desc = (record.resultDesc || "").toLowerCase();
+    if (record.status === "CANCELLED" || desc.includes("cancel")) {
+      setMessage("You cancelled the M-PESA prompt.");
+      setErrorHint("Tap Try Again and approve the prompt with your M-PESA PIN.");
     } else if (desc.includes("insufficient") || desc.includes("balance")) {
-      setMessage("Insufficient M-Pesa balance.");
-      setErrorHint("Top up your M-Pesa, then try again.");
+      setMessage("Insufficient M-PESA balance.");
+      setErrorHint("Top up your M-PESA, then try again.");
     } else if (desc.includes("timeout") || desc.includes("expire")) {
       setMessage("The STK prompt timed out.");
       setErrorHint("Make sure your phone is on and unlocked, then retry.");
     } else if (desc.includes("wrong") || desc.includes("pin")) {
-      setMessage("Incorrect M-Pesa PIN.");
+      setMessage("Incorrect M-PESA PIN.");
       setErrorHint("Try again and enter the correct PIN.");
     } else {
-      setMessage(rec.resultDesc || "Payment was not completed on M-Pesa.");
+      setMessage(record.resultDesc || "Payment was not completed on M-PESA.");
       setErrorHint("Check your phone and try again.");
     }
   }
 
-  // Active polling: hit /api/payhero/status every 3s and translate the
-  // returned status into the same UI stage updates as the realtime listener.
-  function startPolling(pid: string, refStr: string) {
-    let attempts = 0;
-    const POLL_MS = 3000;
-    const MAX_ATTEMPTS = 60; // ~3 minutes
+  function scheduleFailsafeStatusCheck(pid: string, refStr: string) {
+    const MAX_RETRIES = 3;
+    const INITIAL_DELAY_MS = 12000;
+    const RETRY_DELAY_MS = 5000;
 
-    const tick = async () => {
+    const runCheck = async () => {
       if (handledRef.current) return;
-      attempts += 1;
-      try {
-        const qs = new URLSearchParams({ paymentId: pid });
-        if (refStr) qs.set("reference", refStr);
-        const res = await fetch(`/api/payhero/status?${qs.toString()}`);
-        const data = (await res.json()) as { status: string; message?: string };
-        const s = (data.status || "").toUpperCase() as PaymentStatus;
 
-        if (s === "SUCCESS" || s === "FAILED" || s === "CANCELLED") {
-          // Synthesize a minimal record so handleRecord runs the terminal flow.
+      statusRetryRef.current += 1;
+
+      try {
+        const search = new URLSearchParams({ paymentId: pid });
+        if (refStr) search.set("reference", refStr);
+
+        const response = await fetch(`/api/status?${search.toString()}`);
+        const data = (await response.json()) as {
+          status?: string;
+          message?: string;
+          MpesaReceiptNumber?: string;
+          CheckoutRequestID?: string;
+        };
+        const nextStatus = (data.status || "").toUpperCase() as PaymentStatus;
+
+        if (nextStatus === "SUCCESS" || nextStatus === "FAILED" || nextStatus === "CANCELLED") {
           await handleRecord({
             paymentId: pid,
             phone: user?.phone || "",
             payerPhone: "",
             amount,
             purpose,
-            status: s,
+            status: nextStatus,
             reference: refStr,
+            CheckoutRequestID: data.CheckoutRequestID,
+            MpesaReceiptNumber: data.MpesaReceiptNumber,
             resultDesc: data.message,
             createdAt: Date.now(),
           });
           return;
         }
 
-        // Non-terminal: sync stage from the polled status.
-        const valid: PaymentStatus[] = ["PENDING", "QUEUED", "PROCESSING"];
-        if (valid.includes(s)) {
-          const ui = mapRtdbStatus(s);
-          setStatus(ui);
-          setMessage(messageFor(s));
+        if (["PENDING", "QUEUED", "PROCESSING"].includes(nextStatus)) {
+          const mapped = nextStatus as PaymentStatus;
+          setStatus(mapRtdbStatus(mapped));
+          setMessage(messageFor(mapped));
         }
       } catch {
-        // ignore transient network errors
+        // Ignore transient failures and continue to the limited retry loop.
       }
 
-      if (!handledRef.current && attempts < MAX_ATTEMPTS) {
-        pollRef.current = window.setTimeout(tick, POLL_MS);
-      } else if (!handledRef.current) {
+      if (statusRetryRef.current < MAX_RETRIES && !handledRef.current) {
+        failsafeRef.current = window.setTimeout(runCheck, RETRY_DELAY_MS);
+        return;
+      }
+
+      if (!handledRef.current) {
         cleanup();
         setStatus("failed");
-        setMessage("Payment confirmation timed out.");
-        setErrorHint(
-          "If your M-Pesa was charged, contact support with the reference below.",
-        );
+        setMessage("We could not confirm the payment in time.");
+        setErrorHint("If M-PESA deducted funds, use the reference below for support.");
       }
     };
 
-    pollRef.current = window.setTimeout(tick, POLL_MS);
+    failsafeRef.current = window.setTimeout(runCheck, INITIAL_DELAY_MS);
   }
 
   function startTicker() {
     setElapsed(0);
     tickerRef.current = window.setInterval(() => {
-      setElapsed((e) => e + 1);
+      setElapsed((value) => value + 1);
     }, 1000);
   }
 
   const startPayment = async () => {
     if (!user) return;
+
     const normalized = normalizePhone(phone);
     if (!isValidKePhone(normalized)) {
       setErrorHint("");
-      setMessage("Enter a valid Kenyan phone number (07.. or 2547..).");
+      setMessage("Enter a valid Kenyan phone number in 07... or 2547... format.");
       return;
     }
+
     setStatus("sending");
-    setMessage("Sending STK push to your phone…");
+    setMessage("Sending STK push to your phone...");
     setErrorHint("");
     handledRef.current = false;
+    statusRetryRef.current = 0;
+
     try {
-      const res = await fetch("/api/pay", {
+      const response = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -295,53 +295,52 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
           phone: normalized,
           purpose,
           userPhone: user.phone,
+          customerName: user.name,
         }),
       });
 
-      // Try to parse JSON, but gracefully handle non-JSON responses (HTML/error pages).
       let data: any = null;
       let rawText = "";
+
       try {
-        data = await res.json();
-      } catch (jsonErr) {
-        // JSON parse failed — fallback to text so we can show a readable error
-        rawText = (await res.text().catch(() => "")).slice(0, 2000);
-        console.error("/api/payhero/initiate returned non-JSON response:", rawText, jsonErr);
+        data = await response.json();
+      } catch (jsonError) {
+        rawText = (await response.text().catch(() => "")).slice(0, 2000);
+        console.error("/api/pay returned non-JSON response:", rawText, jsonError);
       }
 
-      if (!res.ok) {
-        const errMsg = (data && (data.error || data.message)) || rawText || `Server responded ${res.status}`;
+      if (!response.ok) {
+        const errorMessage =
+          (data && (data.error || data.message)) || rawText || `Server responded ${response.status}`;
         setStatus("failed");
-        setMessage(errMsg);
+        setMessage(errorMessage);
         setErrorHint("Check the phone number and your network, then try again.");
         return;
       }
 
       if (!data || !data.success || !data.paymentId) {
-        const errMsg = (data && (data.error || data.message)) || rawText || "Failed to send STK push.";
+        const errorMessage =
+          (data && (data.error || data.message)) || rawText || "Failed to send STK push.";
         setStatus("failed");
-        setMessage(errMsg);
+        setMessage(errorMessage);
         setErrorHint("Check the phone number and your network, then try again.");
         return;
       }
+
       setPaymentId(data.paymentId);
       setReference(data.reference || "");
       setStatus("pending");
-      setMessage("STK push sent. Check your phone for the M-Pesa prompt.");
+      setMessage("Waiting for payment...");
       startTicker();
 
-      // Realtime updates from RTDB drive every UI stage transition.
-      // The server writes PENDING → QUEUED → (PROCESSING) → SUCCESS/FAILED/CANCELLED,
-      // and `mapRtdbStatus` translates each value into the matching UI stage.
-      unsubRef.current = subscribePayment(data.paymentId, (rec) => {
-        if (rec) void handleRecord(rec);
+      unsubRef.current = subscribePayment(data.paymentId, (record) => {
+        if (record) void handleRecord(record);
       });
 
-      // Active polling against /api/payhero/status as a backup to realtime.
-      startPolling(data.paymentId, data.reference || "");
-    } catch (e) {
+      scheduleFailsafeStatusCheck(data.paymentId, data.reference || "");
+    } catch (error) {
       setStatus("failed");
-      setMessage(e instanceof Error ? e.message : "Network error.");
+      setMessage(error instanceof Error ? error.message : "Network error.");
       setErrorHint("Check your internet connection and retry.");
     }
   };
@@ -356,7 +355,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const currentStage = stageIndex(status);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (isLocked ? null : onOpenChange(o))}>
+    <Dialog open={open} onOpenChange={(nextOpen) => (isLocked ? null : onOpenChange(nextOpen))}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[image:var(--gradient-cta)] text-primary-foreground shadow-[var(--shadow-cta)]">
@@ -364,39 +363,39 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
           </div>
           <DialogTitle className="text-center text-xl">{purposeLabel}</DialogTitle>
           <DialogDescription className="text-center">
-            Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-Pesa STK Push
+            Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-PESA STK Push
           </DialogDescription>
         </DialogHeader>
 
         {status === "idle" && (
           <div className="space-y-3">
-            <label className="text-xs font-medium text-muted-foreground">M-Pesa Phone Number</label>
+            <label className="text-xs font-medium text-muted-foreground">M-PESA Phone Number</label>
             <Input
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0712345678"
+              onChange={(event) => setPhone(normalizePhone(event.target.value))}
+              placeholder="254712345678"
               type="tel"
               inputMode="tel"
-              maxLength={13}
+              maxLength={12}
             />
             {message && <p className="text-xs text-destructive">{message}</p>}
             <Button variant="hero" size="lg" className="w-full" onClick={startPayment}>
-              Pay KES {amount} with M-Pesa
+              Pay Now
             </Button>
             <p className="text-[11px] text-center text-muted-foreground">
-              You'll receive an M-Pesa prompt on your phone. Approve it to complete payment.
+              Check your phone and enter M-PESA PIN to complete payment.
             </p>
           </div>
         )}
 
         {isLocked && (
           <div className="space-y-4 py-2">
-            {/* Stage progress bar */}
             <div className="flex items-center justify-between gap-1">
-              {STAGES.map((stage, i) => {
+              {STAGES.map((stage, index) => {
                 const Icon = stage.icon;
-                const reached = i <= currentStage;
-                const active = i === currentStage;
+                const reached = index <= currentStage;
+                const active = index === currentStage;
+
                 return (
                   <div key={stage.key} className="flex flex-1 flex-col items-center gap-1">
                     <div
@@ -422,9 +421,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                     >
                       {stage.label}
                     </span>
-                    {i < STAGES.length - 1 && (
-                      <div className="hidden" />
-                    )}
+                    {index < STAGES.length - 1 && <div className="hidden" />}
                   </div>
                 );
               })}
@@ -442,7 +439,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
 
             {status === "in_progress" && (
               <p className="text-center text-[11px] text-muted-foreground">
-                Don't close this window — confirmation arrives automatically.
+                Do not close this window. Confirmation updates automatically.
               </p>
             )}
           </div>
@@ -451,7 +448,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         {status === "success" && (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <CheckCircle2 className="h-10 w-10 text-primary animate-in zoom-in" />
+              <CheckCircle2 className="h-10 w-10 animate-in zoom-in text-primary" />
             </div>
             <p className="text-base font-semibold">Payment Successful</p>
             <p className="text-sm text-muted-foreground">{message}</p>
@@ -463,7 +460,9 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                   onClick={() => {
                     try {
                       navigator.clipboard?.writeText(reference);
-                    } catch {}
+                    } catch {
+                      // no-op
+                    }
                   }}
                 >
                   Copy
@@ -494,7 +493,9 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
                   onClick={() => {
                     try {
                       navigator.clipboard?.writeText(reference);
-                    } catch {}
+                    } catch {
+                      // no-op
+                    }
                   }}
                 >
                   Copy reference
@@ -510,6 +511,10 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
               </Button>
             </div>
           </div>
+        )}
+
+        {paymentId && status !== "idle" && (
+          <p className="text-center text-[10px] text-muted-foreground">Payment ID: {paymentId}</p>
         )}
       </DialogContent>
     </Dialog>

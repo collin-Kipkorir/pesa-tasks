@@ -1,8 +1,9 @@
-import { rtdbGet, rtdbUpdate } from "../../_lib/rtdb-server.js";
-
-const DEFAULT_STATUS_URL = process.env.VITE_PAYHERO_BASE_URL
-  ? `${process.env.VITE_PAYHERO_BASE_URL.replace(/\/$/, "")}/api/v2/transaction-status`
-  : "https://backend.payhero.co.ke/api/v2/transaction-status";
+import { rtdbGet, rtdbUpdate } from "../_lib/rtdb-server.js";
+import {
+  parseJsonSafe,
+  payHeroConfig,
+  resolvePaymentStatus,
+} from "../_lib/payhero.js";
 
 export default async function handler(req, res) {
   const paymentId = req.query?.paymentId || "";
@@ -22,45 +23,69 @@ export default async function handler(req, res) {
   }
 
   if (doc?.status === "SUCCESS" || doc?.status === "FAILED" || doc?.status === "CANCELLED") {
-    return res.status(200).json({ status: doc.status });
+    return res.status(200).json({
+      status: doc.status,
+      reference: doc.reference || refParam || "",
+      CheckoutRequestID: doc.CheckoutRequestID || "",
+      MpesaReceiptNumber: doc.MpesaReceiptNumber || "",
+      message: doc.resultDesc || "",
+    });
   }
 
   const reference = doc?.reference || refParam;
-  if (!reference) return res.status(200).json({ status: doc?.status || "PENDING" });
+  if (!reference) {
+    return res.status(200).json({ status: doc?.status || "PENDING" });
+  }
 
   try {
-    const auth = process.env.PAYHERO_AUTH_TOKEN || process.env.VITE_PAYHERO_AUTH_TOKEN;
-    const statusUrl = process.env.PAYHERO_STATUS_URL || DEFAULT_STATUS_URL;
-    const r = await fetch(`${statusUrl}?reference=${encodeURIComponent(reference)}`, {
-      headers: auth ? { Authorization: auth } : {},
-    });
-    const data = await r.json();
-
-    const s = (data.status || "").toString().toUpperCase();
-    const receipt = data.MpesaReceiptNumber || data.mpesa_receipt_number || data.provider_reference;
-    const desc = (data.ResultDesc || data.result_desc || "").toLowerCase();
-    const isSuccess = data.ResultCode === 0 || s === "SUCCESS" || (s === "SUCCESS" && Boolean(receipt));
-    const isCancelled = s === "CANCELLED" || data.ResultCode === 1032 || desc.includes("cancel");
-    const isFailed = !isSuccess && !isCancelled && (s === "FAILED" || (typeof data.ResultCode === "number" && data.ResultCode !== 0 && !receipt));
-    const isProcessing = !isSuccess && !isFailed && !isCancelled && (s === "PROCESSING" || s === "QUEUED" || desc.includes("processing"));
-
-    let mapped = doc?.status || "PENDING";
-    if (isSuccess) mapped = "SUCCESS";
-    else if (isCancelled) mapped = "CANCELLED";
-    else if (isFailed) mapped = "FAILED";
-    else if (isProcessing) mapped = "PROCESSING";
+    const response = await fetch(
+      `${payHeroConfig.transactionStatusUrl}?reference=${encodeURIComponent(reference)}`,
+      {
+        headers: payHeroConfig.authToken
+          ? { Authorization: payHeroConfig.authToken }
+          : {},
+      },
+    );
+    const data = await parseJsonSafe(response);
+    const receipt =
+      data?.MpesaReceiptNumber ||
+      data?.mpesa_receipt_number ||
+      data?.provider_reference ||
+      "";
+    const mapped =
+      resolvePaymentStatus({
+        status: data?.Status || data?.status || doc?.status || "PENDING",
+        resultCode: data?.ResultCode ?? data?.result_code,
+        resultDesc: data?.ResultDesc || data?.result_desc || data?.message || "",
+        mpesaReceiptNumber: receipt,
+      }) ||
+      doc?.status ||
+      "PENDING";
 
     if (pid && mapped !== doc?.status) {
       await rtdbUpdate(`payments/${pid}`, {
         status: mapped,
         ...(receipt ? { MpesaReceiptNumber: receipt } : {}),
-        ...(data.ResultDesc || data.result_desc ? { resultDesc: data.ResultDesc || data.result_desc } : {}),
+        ...(data?.ResultDesc || data?.result_desc || data?.message
+          ? { resultDesc: data?.ResultDesc || data?.result_desc || data?.message }
+          : {}),
         updatedAt: Date.now(),
       });
     }
 
-    return res.status(200).json({ status: mapped, message: data.ResultDesc || data.result_desc });
-  } catch (e) {
-    return res.status(200).json({ status: "PENDING", message: e?.message || "Could not fetch status" });
+    return res.status(200).json({
+      status: mapped,
+      reference,
+      CheckoutRequestID: doc?.CheckoutRequestID || "",
+      MpesaReceiptNumber: receipt,
+      message: data?.ResultDesc || data?.result_desc || data?.message || "",
+    });
+  } catch (error) {
+    return res.status(200).json({
+      status: doc?.status || "PENDING",
+      reference,
+      CheckoutRequestID: doc?.CheckoutRequestID || "",
+      message: error instanceof Error ? error.message : "Could not fetch status",
+    });
   }
 }
