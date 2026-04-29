@@ -111,6 +111,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const unsubRef = useRef<null | (() => void)>(null);
   const failsafeRef = useRef<number | null>(null);
+  const pollRef = useRef<number | null>(null);
   const tickerRef = useRef<number | null>(null);
   const handledRef = useRef(false);
 
@@ -122,6 +123,10 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     if (failsafeRef.current) {
       window.clearTimeout(failsafeRef.current);
       failsafeRef.current = null;
+    }
+    if (pollRef.current) {
+      window.clearTimeout(pollRef.current);
+      pollRef.current = null;
     }
     if (tickerRef.current) {
       window.clearInterval(tickerRef.current);
