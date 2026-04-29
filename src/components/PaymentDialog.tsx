@@ -27,6 +27,7 @@ import {
   type PaymentStatus,
 } from "@/lib/payments-db";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type Purpose = "activation" | "vip";
 
@@ -163,6 +164,12 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
         if (purpose === "activation") await markActivated(user.phone);
         else await markVip(user.phone);
       }
+
+      toast.success(
+        purpose === "activation"
+          ? "Account activated successfully."
+          : "VIP unlocked successfully. Premium surveys are now open.",
+      );
 
       setStatus("success");
       setMessage(

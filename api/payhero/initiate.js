@@ -46,7 +46,7 @@ export default async function handler(req, res) {
       phone: userPhone,
       payerPhone: payerMsisdn,
       amount,
-      purpose: body.purpose || "payment",
+      purpose: body.purpose || "activation",
       status: "PENDING",
       reference,
       externalReference: reference,

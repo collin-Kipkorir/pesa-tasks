@@ -23,6 +23,7 @@ export type PaymentRecord = {
   resultDesc?: string;
   createdAt: number;
   updatedAt?: number;
+  fulfilledAt?: number;
 };
 
 /** Subscribe to a payment node and get realtime status updates. */

@@ -3,6 +3,7 @@ import {
   extractCallbackPayload,
   resolvePaymentStatus,
 } from "../_lib/payhero.js";
+import { fulfillSuccessfulPayment } from "../_lib/payment-fulfillment.js";
 
 export default async function handler(req, res) {
   try {
@@ -58,6 +59,10 @@ export default async function handler(req, res) {
       ...(payload.resultDesc ? { resultDesc: payload.resultDesc } : {}),
       updatedAt: Date.now(),
     });
+
+    if (responseStatus === "SUCCESS") {
+      await fulfillSuccessfulPayment(paymentId);
+    }
 
     return res.status(200).json({ ok: true });
   } catch {

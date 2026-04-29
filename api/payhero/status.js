@@ -4,6 +4,7 @@ import {
   payHeroConfig,
   resolvePaymentStatus,
 } from "../_lib/payhero.js";
+import { fulfillSuccessfulPayment } from "../_lib/payment-fulfillment.js";
 
 export default async function handler(req, res) {
   const paymentId = req.query?.paymentId || "";
@@ -71,6 +72,10 @@ export default async function handler(req, res) {
           : {}),
         updatedAt: Date.now(),
       });
+    }
+
+    if (pid && mapped === "SUCCESS") {
+      await fulfillSuccessfulPayment(pid);
     }
 
     return res.status(200).json({
