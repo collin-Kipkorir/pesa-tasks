@@ -1,0 +1,21 @@
+{
+  "name": "Pesa Tasks",
+  "short_name": "PesaTasks",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#10b981",
+  "description": "Earn M-Pesa cash by completing surveys and offers.",
+  "icons": [
+    {
+      "src": "/src/assets/mpesa-logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/src/assets/mpesa-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
