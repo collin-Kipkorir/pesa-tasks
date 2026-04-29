@@ -208,23 +208,6 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
     }
   }
 
-  // Failsafe: poll status if no realtime update within 12s
-  function startFailsafe(pid: string, ref: string) {
-    let attempts = 0;
-    const tick = async () => {
-      if (handledRef.current) return;
-      attempts += 1;
-      try {
-        const qs = new URLSearchParams({ paymentId: pid });
-        if (ref) qs.set("reference", ref);
-  const res = await fetch(`/api/status?${qs.toString()}`);
-        const data = (await res.json()) as { status: string; message?: string };
-        if (data.status === "SUCCESS" || data.status === "FAILED" || data.status === "CANCELLED") {
-          return;
-        }
-      } catch {
-        // ignore
-      }
   // Active polling: hit /api/payhero/status every 3s and translate the
   // returned status into the same UI stage updates as the realtime listener.
   function startPolling(pid: string, refStr: string) {
