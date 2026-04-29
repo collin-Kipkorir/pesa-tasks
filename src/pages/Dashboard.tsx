@@ -8,6 +8,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { RequireAuth } from "@/components/RequireAuth";
 import { WelcomeBonusDialog } from "@/components/WelcomeBonusDialog";
 import { PaymentDialog } from "@/components/PaymentDialog";
+import InstallPrompt from "@/components/InstallPrompt";
 import { useAuth } from "@/lib/auth";
 import { useSurveys } from "@/lib/use-surveys";
 import { ACTIVATION_FEE, VIP_FEE, DAILY_FREE_LIMIT, DAILY_VIP_LIMIT } from "@/lib/firebase";
@@ -244,6 +245,7 @@ function DashboardInner() {
       <PaymentDialog open={activateOpen} onOpenChange={setActivateOpen} purpose="activation" amount={ACTIVATION_FEE} />
       <PaymentDialog open={unlockOpen} onOpenChange={setUnlockOpen} purpose="vip" amount={VIP_FEE} />
       <WelcomeBonusDialog />
+      <InstallPrompt />
       <BottomNav />
     </div>
   );
