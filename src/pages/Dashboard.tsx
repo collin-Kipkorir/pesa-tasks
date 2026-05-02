@@ -75,8 +75,8 @@ function LivePayoutTicker() {
 function Stat({ label, value, premium }: { label: string; value: string; premium?: boolean }) {
   return (
     <div className={`rounded-lg border p-3 text-sm ${premium ? "bg-white/5" : "bg-card"}`}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 font-semibold">{value}</div>
+      <div className={`text-xs ${premium ? "text-white" : "text-muted-foreground"}`}>{label}</div>
+      <div className={`mt-1 font-semibold ${premium ? "text-white" : ""}`}>{value}</div>
     </div>
   );
 }
