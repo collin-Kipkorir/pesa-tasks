@@ -17,6 +17,7 @@ import {
   Send,
   ShieldCheck,
   AlertTriangle,
+  Crown,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { isValidKePhone, normalizePhone } from "@/lib/phone";
@@ -373,10 +374,27 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount, context }: 
           <DialogTitle className="text-center text-xl">{purposeLabel}</DialogTitle>
           <DialogDescription className="text-center">
             Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-PESA STK Push
-            {context && (
-              <div className="mt-2 text-sm text-muted-foreground">{context}</div>
-            )}
           </DialogDescription>
+
+          {/* VIP contextual banner - prominent, persuasive */}
+          {purpose === "vip" && (
+            <div className="mx-auto mt-3 max-w-sm rounded-lg border bg-gradient-to-r from-amber-50 to-transparent p-3 text-center shadow-sm">
+              <div className="flex items-center justify-center gap-2">
+                <div className="rounded-full bg-amber-100 p-2 text-amber-700">
+                  <Crown className="h-4 w-4" />
+                </div>
+                <div className="text-sm font-bold">Upgrade to VIP — continue now</div>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Unlock premium tasks, higher rewards and complete more surveys each day.
+              </div>
+              {context ? (
+                <div className="mt-2 text-sm text-foreground font-semibold">{context}</div>
+              ) : (
+                <div className="mt-2 text-sm text-foreground font-semibold">Upgrade to VIP to continue now.</div>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         {status === "idle" && (
