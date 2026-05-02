@@ -132,7 +132,7 @@ function DashboardInner() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div>
-              <h1 className="text-base font-bold leading-tight">Pesatask Paid Surveys</h1>
+              <h1 className="text-base font-bold leading-tight">Pesa Task Paid Surveys</h1>
               <p className="text-[11px] text-muted-foreground">Earn instantly via M-Pesa</p>
             </div>
           </div>
