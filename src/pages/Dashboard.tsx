@@ -86,6 +86,7 @@ function DashboardInner() {
   const { surveys, loading } = useSurveys();
   const navigate = useNavigate();
   const [unlockOpen, setUnlockOpen] = useState(false);
+  const [unlockContext, setUnlockContext] = useState<string | undefined>(undefined);
   const [activateOpen, setActivateOpen] = useState(false);
 
   const completed = (user?.completed || {}) as Record<string, { date?: number }>;
@@ -125,6 +126,7 @@ function DashboardInner() {
     if (dailyLimitHit) {
       // If the user is not VIP, prompt them to upgrade to VIP so they can continue.
       if (!user?.vip) {
+        setUnlockContext(`Upgrade to VIP for KES ${VIP_FEE} to continue now`);
         setUnlockOpen(true);
         return;
       }
@@ -256,7 +258,7 @@ function DashboardInner() {
       </main>
 
       <PaymentDialog open={activateOpen} onOpenChange={setActivateOpen} purpose="activation" amount={ACTIVATION_FEE} />
-      <PaymentDialog open={unlockOpen} onOpenChange={setUnlockOpen} purpose="vip" amount={VIP_FEE} />
+  <PaymentDialog open={unlockOpen} onOpenChange={(v) => { if (!v) setUnlockContext(undefined); setUnlockOpen(v); }} purpose="vip" amount={VIP_FEE} context={unlockContext} />
       <WelcomeBonusDialog />
       <BottomNav />
     </div>

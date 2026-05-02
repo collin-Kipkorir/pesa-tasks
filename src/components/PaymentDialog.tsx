@@ -36,6 +36,8 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   purpose: Purpose;
   amount: number;
+  // optional contextual message to show in the dialog (e.g. "Upgrade to VIP for KES X/day to continue now")
+  context?: string;
 }
 
 type Status =
@@ -94,7 +96,7 @@ function messageFor(status: PaymentStatus): string {
   }
 }
 
-export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
+export function PaymentDialog({ open, onOpenChange, purpose, amount, context }: Props) {
   const { user } = useAuth();
   const [phone, setPhone] = useState(user?.phone || "");
   const [status, setStatus] = useState<Status>("idle");
@@ -371,6 +373,9 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount }: Props) {
           <DialogTitle className="text-center text-xl">{purposeLabel}</DialogTitle>
           <DialogDescription className="text-center">
             Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-PESA STK Push
+            {context && (
+              <div className="mt-2 text-sm text-muted-foreground">{context}</div>
+            )}
           </DialogDescription>
         </DialogHeader>
 
