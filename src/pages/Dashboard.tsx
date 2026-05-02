@@ -47,7 +47,7 @@ const fakePayouts = [
   { name: "Peter Kamau", amount: 22100 },
 ];
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 function LivePayoutTicker() {
   const [items, setItems] = useState<Array<{ name: string; amount: number }>>(fakePayouts);
@@ -253,32 +253,49 @@ function DashboardInner() {
 function DashboardInstallDialog() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [visible, setVisible] = useState(false);
-  const [dismissed, setDismissed] = useState(() => Boolean(localStorage.getItem("pwa-install-dismissed")));
+  const [lastDismissed, setLastDismissed] = useState<number | null>(() => {
+    try {
+      const v = localStorage.getItem("pwa-install-last-dismissed");
+      return v ? Number(v) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [accepted, setAccepted] = useState(false);
+  const reShowTimer = useRef<number | null>(null);
+  const initialTimer = useRef<number | null>(null);
+  const startedRef = useRef(false);
 
   useEffect(() => {
     function onBeforeInstallPrompt(e: any) {
       e.preventDefault();
       setDeferredPrompt(e);
     }
+    function onAppInstalled() {
+      setAccepted(true);
+      setVisible(false);
+      try { localStorage.removeItem("pwa-install-last-dismissed"); } catch {}
+    }
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
+    window.addEventListener("appinstalled", onAppInstalled as any);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
+      window.removeEventListener("appinstalled", onAppInstalled as any);
+    };
   }, []);
 
-  // detect installed state (standalone) for modern and iOS
   const isInstalled = typeof window !== "undefined" && (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true);
 
+  // Start the initial 10s countdown on first interaction (only if not installed/accepted)
   useEffect(() => {
-    if (dismissed || isInstalled) return;
-
-    let timer: number | null = null;
-    let started = false;
+    if (accepted || isInstalled) return;
 
     function startCountdown() {
-      if (started) return;
-      started = true;
-      timer = window.setTimeout(() => {
-        setVisible(true);
-      }, 10000); // 10 seconds after first interaction
+      if (startedRef.current) return;
+      startedRef.current = true;
+      // don't start if a dismissal timer exists and hasn't elapsed
+      if (lastDismissed && Date.now() - lastDismissed < 20000) return;
+      initialTimer.current = window.setTimeout(() => setVisible(true), 10000);
     }
 
     function onInteraction() {
@@ -293,34 +310,51 @@ function DashboardInstallDialog() {
       window.removeEventListener("click", onInteraction as any);
       window.removeEventListener("keydown", onInteraction as any);
       window.removeEventListener("touchstart", onInteraction as any);
-      if (timer) window.clearTimeout(timer);
+      if (initialTimer.current) window.clearTimeout(initialTimer.current);
     };
-  }, [dismissed, isInstalled]);
+  }, [accepted, isInstalled, lastDismissed]);
 
-  if (dismissed || isInstalled || !visible) return null;
+  // If there's a lastDismissed timestamp, schedule re-show after 20s
+  useEffect(() => {
+    if (accepted || isInstalled) return;
+    if (!lastDismissed) return;
+    const elapsed = Date.now() - lastDismissed;
+    const remaining = Math.max(0, 20000 - elapsed);
+    if (reShowTimer.current) window.clearTimeout(reShowTimer.current);
+    reShowTimer.current = window.setTimeout(() => {
+      setVisible(true);
+    }, remaining);
+    return () => { if (reShowTimer.current) window.clearTimeout(reShowTimer.current); };
+  }, [lastDismissed, accepted, isInstalled]);
+
+  if (accepted || isInstalled || !visible) return null;
 
   async function handleInstall() {
     if (deferredPrompt) {
       try {
         deferredPrompt.prompt();
         const choice = await deferredPrompt.userChoice;
+        if (choice && choice.outcome === "accepted") {
+          setAccepted(true);
+          try { localStorage.removeItem("pwa-install-last-dismissed"); } catch {}
+        }
         console.log("Install choice", choice);
       } catch (err) {
         console.error("Install prompt error", err);
       }
     } else {
-      // Show iOS instructions by opening a small help window/tab or fallback UI
-      alert("To install Pesa Tasks on iPhone: use Safari's Share → 'Add to Home Screen'. On Android, the browser will prompt when available.");
+      // iOS fallback: show small friendly instructions
+      alert("To install Pesa Tasks on iPhone: open this site in Safari, then tap Share → 'Add to Home Screen'.");
     }
     setVisible(false);
-    localStorage.setItem("pwa-install-dismissed", "1");
-    setDismissed(true);
   }
 
   function handleClose() {
     setVisible(false);
-    localStorage.setItem("pwa-install-dismissed", "1");
-    setDismissed(true);
+    const ts = Date.now();
+    setLastDismissed(ts);
+    try { localStorage.setItem("pwa-install-last-dismissed", String(ts)); } catch {}
+    // schedule re-show after 20s (handled by effect watching lastDismissed)
   }
 
   return (
