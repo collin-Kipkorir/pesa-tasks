@@ -371,14 +371,21 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount, context }: 
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[image:var(--gradient-cta)] text-primary-foreground shadow-[var(--shadow-cta)]">
             <Smartphone className="h-7 w-7" />
           </div>
-          {purpose !== "vip" ? (
-            <>
-              <DialogTitle className="text-center text-xl">{purposeLabel}</DialogTitle>
-              <DialogDescription className="text-center">
-                Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-PESA STK Push
-              </DialogDescription>
-            </>
-          ) : null}
+          {purpose === "activation" && (
+            <div className="mx-auto mt-3 max-w-sm rounded-lg border bg-gradient-to-r from-sky-50 to-transparent p-3 text-center shadow-sm">
+              <div className="flex items-center justify-center gap-2">
+                <div className="rounded-full bg-sky-100 p-2 text-sky-700">
+                  <Smartphone className="h-4 w-4" />
+                </div>
+                <div className="text-sm font-bold">Activate Your Account — Start Withdrawing</div>
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Activate your account to unlock withdrawals and receive your earnings instantly via M-PESA.
+              </div>
+              <div className="mt-2 text-sm text-foreground font-semibold">One-time KES {amount} activation.</div>
+            </div>
+          )}
+          {purpose === "vip" ? null : null}
 
           {/* VIP contextual banner - prominent, persuasive */}
           {purpose === "vip" && (
