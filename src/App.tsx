@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
+import InstallPrompt from "@/components/InstallPrompt";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
         <Toaster />
+        <InstallPrompt />
       </AuthProvider>
     </BrowserRouter>
   );
