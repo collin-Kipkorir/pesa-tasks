@@ -243,8 +243,102 @@ function DashboardInner() {
 
       <PaymentDialog open={activateOpen} onOpenChange={setActivateOpen} purpose="activation" amount={ACTIVATION_FEE} />
       <PaymentDialog open={unlockOpen} onOpenChange={setUnlockOpen} purpose="vip" amount={VIP_FEE} />
+      <DashboardInstallDialog />
       <WelcomeBonusDialog />
       <BottomNav />
+    </div>
+  );
+}
+
+function DashboardInstallDialog() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(() => Boolean(localStorage.getItem("pwa-install-dismissed")));
+
+  useEffect(() => {
+    function onBeforeInstallPrompt(e: any) {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    }
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
+    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
+  }, []);
+
+  // detect installed state (standalone) for modern and iOS
+  const isInstalled = typeof window !== "undefined" && (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true);
+
+  useEffect(() => {
+    if (dismissed || isInstalled) return;
+
+    let timer: number | null = null;
+    let started = false;
+
+    function startCountdown() {
+      if (started) return;
+      started = true;
+      timer = window.setTimeout(() => {
+        setVisible(true);
+      }, 10000); // 10 seconds after first interaction
+    }
+
+    function onInteraction() {
+      startCountdown();
+    }
+
+    window.addEventListener("click", onInteraction, { passive: true });
+    window.addEventListener("keydown", onInteraction, { passive: true });
+    window.addEventListener("touchstart", onInteraction, { passive: true });
+
+    return () => {
+      window.removeEventListener("click", onInteraction as any);
+      window.removeEventListener("keydown", onInteraction as any);
+      window.removeEventListener("touchstart", onInteraction as any);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [dismissed, isInstalled]);
+
+  if (dismissed || isInstalled || !visible) return null;
+
+  async function handleInstall() {
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        console.log("Install choice", choice);
+      } catch (err) {
+        console.error("Install prompt error", err);
+      }
+    } else {
+      // Show iOS instructions by opening a small help window/tab or fallback UI
+      alert("To install Pesa Tasks on iPhone: use Safari's Share → 'Add to Home Screen'. On Android, the browser will prompt when available.");
+    }
+    setVisible(false);
+    localStorage.setItem("pwa-install-dismissed", "1");
+    setDismissed(true);
+  }
+
+  function handleClose() {
+    setVisible(false);
+    localStorage.setItem("pwa-install-dismissed", "1");
+    setDismissed(true);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
+      <div className="relative z-10 w-full max-w-md rounded-lg bg-card p-4 shadow-lg">
+        <div className="flex items-start gap-3">
+          <div className="text-2xl">📲</div>
+          <div className="flex-1">
+            <h3 className="text-lg font-bold">Install Pesa Tasks?</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Install the app for faster access, offline-like experience and instant launches.</p>
+            <div className="mt-4 flex gap-3">
+              <button onClick={handleInstall} className="inline-flex items-center rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Install</button>
+              <button onClick={handleClose} className="inline-flex items-center rounded px-3 py-2 text-sm text-muted-foreground">Maybe later</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
