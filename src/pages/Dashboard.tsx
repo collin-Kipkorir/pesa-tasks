@@ -253,6 +253,7 @@ function DashboardInner() {
 function DashboardInstallDialog() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [visible, setVisible] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [lastDismissed, setLastDismissed] = useState<number | null>(() => {
     try {
       const v = localStorage.getItem("pwa-install-last-dismissed");
@@ -327,6 +328,8 @@ function DashboardInstallDialog() {
     return () => { if (reShowTimer.current) window.clearTimeout(reShowTimer.current); };
   }, [lastDismissed, accepted, isInstalled]);
 
+  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+
   if (accepted || isInstalled || !visible) return null;
 
   async function handleInstall() {
@@ -342,11 +345,12 @@ function DashboardInstallDialog() {
       } catch (err) {
         console.error("Install prompt error", err);
       }
-    } else {
-      // iOS fallback: show small friendly instructions
-      alert("To install Pesa Tasks on iPhone: open this site in Safari, then tap Share → 'Add to Home Screen'.");
+      setVisible(false);
+      return;
     }
-    setVisible(false);
+
+    // No native prompt available (commonly iOS): show inline instructions instead of alert
+    setShowInstructions(true);
   }
 
   function handleClose() {
@@ -367,9 +371,24 @@ function DashboardInstallDialog() {
             <h3 className="text-lg font-bold">Install Pesa Tasks?</h3>
             <p className="mt-1 text-sm text-muted-foreground">Install the app for faster access, offline-like experience and instant launches.</p>
             <div className="mt-4 flex gap-3">
-              <button onClick={handleInstall} className="inline-flex items-center rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Install</button>
+              <button onClick={handleInstall} className="inline-flex items-center rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Install to your phone</button>
               <button onClick={handleClose} className="inline-flex items-center rounded px-3 py-2 text-sm text-muted-foreground">Maybe later</button>
             </div>
+            {showInstructions && (
+              <div className="mt-4 rounded border bg-muted/30 p-3 text-sm">
+                {isIOS ? (
+                  <div>
+                    <p className="font-semibold">iPhone / iPad installation</p>
+                    <p className="mt-1">Open this page in Safari. Tap the Share button and choose <strong>Add to Home Screen</strong>. This will install Pesa Tasks to your device.</p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="font-semibold">Install on Android / Desktop</p>
+                    <p className="mt-1">If your browser supports it, you should see a prompt to install. Otherwise, use the browser menu and look for <strong>Install app</strong> or <strong>Add to desktop</strong>.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
