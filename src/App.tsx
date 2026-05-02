@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
-import InstallDialog from "@/components/InstallDialog";
+// Install dialog removed - PWA will be enabled via service worker + manifest
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -48,8 +48,7 @@ export default function App() {
           <Route path="/task/:id" element={<Task />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
-        <Toaster />
-  <InstallDialog />
+  <Toaster />
       </AuthProvider>
     </BrowserRouter>
   );

@@ -1,8 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
-  Smartphone, Wallet, AlertTriangle, Crown, Zap, Wifi, Lightbulb, Lock, CheckCircle2, Sparkles,
+  Smartphone,
+  Wallet,
+  AlertTriangle,
+  Crown,
+  Zap,
+  Wifi,
+  Lightbulb,
+  Lock,
+  CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -12,7 +21,6 @@ import { useAuth } from "@/lib/auth";
 import { useSurveys } from "@/lib/use-surveys";
 import { ACTIVATION_FEE, VIP_FEE, DAILY_FREE_LIMIT, DAILY_VIP_LIMIT } from "@/lib/firebase";
 import type { Survey } from "@/lib/surveys-seed";
-import { useMemo } from "react";
 import { toast } from "sonner";
 
 const DUMMY_NAMES = [
@@ -20,9 +28,7 @@ const DUMMY_NAMES = [
 ];
 
 function generateDummyPayouts(count = 30) {
-  // produce up to `count` unique payouts by sampling DUMMY_NAMES without replacement
   const names = [...DUMMY_NAMES];
-  // shuffle names
   for (let i = names.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [names[i], names[j]] = [names[j], names[i]];
@@ -47,8 +53,6 @@ const fakePayouts = [
   { name: "Peter Kamau", amount: 22100 },
 ];
 
-import { useEffect, useRef } from "react";
-
 function LivePayoutTicker() {
   const [items, setItems] = useState<Array<{ name: string; amount: number }>>(fakePayouts);
   const [dummy] = useState(() => generateDummyPayouts(30));
@@ -61,11 +65,18 @@ function LivePayoutTicker() {
   }, [items]);
 
   const p = items[idx] || dummy[0] || fakePayouts[0];
-  // no per-tick floating toast: ticker text itself is sufficient
-
   return (
     <div key={idx} className="rounded-lg px-3 py-2 text-xs font-medium text-primary-foreground shadow-sm animate-in fade-in slide-in-from-right-2" style={{ background: "var(--gradient-cta)" }}>
       🎉 <span className="font-bold">{p.name}</span> got <span className="font-bold">KES {p.amount.toLocaleString()}</span> 💸 to M-Pesa
+    </div>
+  );
+}
+
+function Stat({ label, value, premium }: { label: string; value: string; premium?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3 text-sm ${premium ? "bg-white/5" : "bg-card"}`}>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 font-semibold">{value}</div>
     </div>
   );
 }
@@ -94,15 +105,12 @@ function DashboardInner() {
   const todayCount = user?.vip ? vipToday + freeToday : freeToday;
   const dailyLimitHit = todayCount >= dailyLimit;
 
-  // shuffle surveys on each page load and place completed surveys at the end
   const shuffledSurveys = useMemo(() => {
     const arr = [...surveys];
-    // Fisher-Yates shuffle
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-    // stable partition: incomplete first, completed at the end
     const incomplete: Survey[] = [];
     const completedList: Survey[] = [];
     for (const s of arr) {
@@ -188,7 +196,7 @@ function DashboardInner() {
         <div className="mt-4 space-y-4">
           {loading && <p className="text-sm text-muted-foreground">Loading surveys...</p>}
           {shuffledSurveys.map((t) => {
-            const Icon = ICON_MAP[t.icon] || Smartphone;
+            const Icon = ICON_MAP[t.icon as keyof typeof ICON_MAP] || Smartphone;
             const isVip = t.category === "vip";
             const isVipLocked = isVip && !user?.vip;
             const isCompleted = !!completed[t.id];
@@ -243,164 +251,8 @@ function DashboardInner() {
 
       <PaymentDialog open={activateOpen} onOpenChange={setActivateOpen} purpose="activation" amount={ACTIVATION_FEE} />
       <PaymentDialog open={unlockOpen} onOpenChange={setUnlockOpen} purpose="vip" amount={VIP_FEE} />
-      <DashboardInstallDialog />
       <WelcomeBonusDialog />
       <BottomNav />
-    </div>
-  );
-}
-
-function DashboardInstallDialog() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [visible, setVisible] = useState(false);
-  const [showInstructions, setShowInstructions] = useState(false);
-  const [lastDismissed, setLastDismissed] = useState<number | null>(() => {
-    try {
-      const v = localStorage.getItem("pwa-install-last-dismissed");
-      return v ? Number(v) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [accepted, setAccepted] = useState(false);
-  const reShowTimer = useRef<number | null>(null);
-  const initialTimer = useRef<number | null>(null);
-  const startedRef = useRef(false);
-
-  useEffect(() => {
-    function onBeforeInstallPrompt(e: any) {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    }
-    function onAppInstalled() {
-      setAccepted(true);
-      setVisible(false);
-      try { localStorage.removeItem("pwa-install-last-dismissed"); } catch {}
-    }
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
-    window.addEventListener("appinstalled", onAppInstalled as any);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt as any);
-      window.removeEventListener("appinstalled", onAppInstalled as any);
-    };
-  }, []);
-
-  const isInstalled = typeof window !== "undefined" && (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true);
-
-  // Start the initial 10s countdown on first interaction (only if not installed/accepted)
-  useEffect(() => {
-    if (accepted || isInstalled) return;
-
-    function startCountdown() {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      // don't start if a dismissal timer exists and hasn't elapsed
-      if (lastDismissed && Date.now() - lastDismissed < 20000) return;
-      initialTimer.current = window.setTimeout(() => setVisible(true), 10000);
-    }
-
-    function onInteraction() {
-      startCountdown();
-    }
-
-    window.addEventListener("click", onInteraction, { passive: true });
-    window.addEventListener("keydown", onInteraction, { passive: true });
-    window.addEventListener("touchstart", onInteraction, { passive: true });
-
-    return () => {
-      window.removeEventListener("click", onInteraction as any);
-      window.removeEventListener("keydown", onInteraction as any);
-      window.removeEventListener("touchstart", onInteraction as any);
-      if (initialTimer.current) window.clearTimeout(initialTimer.current);
-    };
-  }, [accepted, isInstalled, lastDismissed]);
-
-  // If there's a lastDismissed timestamp, schedule re-show after 20s
-  useEffect(() => {
-    if (accepted || isInstalled) return;
-    if (!lastDismissed) return;
-    const elapsed = Date.now() - lastDismissed;
-    const remaining = Math.max(0, 20000 - elapsed);
-    if (reShowTimer.current) window.clearTimeout(reShowTimer.current);
-    reShowTimer.current = window.setTimeout(() => {
-      setVisible(true);
-    }, remaining);
-    return () => { if (reShowTimer.current) window.clearTimeout(reShowTimer.current); };
-  }, [lastDismissed, accepted, isInstalled]);
-
-  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-
-  if (accepted || isInstalled || !visible) return null;
-
-  async function handleInstall() {
-    if (deferredPrompt) {
-      try {
-        deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
-        if (choice && choice.outcome === "accepted") {
-          setAccepted(true);
-          try { localStorage.removeItem("pwa-install-last-dismissed"); } catch {}
-        }
-        console.log("Install choice", choice);
-      } catch (err) {
-        console.error("Install prompt error", err);
-      }
-      setVisible(false);
-      return;
-    }
-
-    // No native prompt available (commonly iOS): show inline instructions instead of alert
-    setShowInstructions(true);
-  }
-
-  function handleClose() {
-    setVisible(false);
-    const ts = Date.now();
-    setLastDismissed(ts);
-    try { localStorage.setItem("pwa-install-last-dismissed", String(ts)); } catch {}
-    // schedule re-show after 20s (handled by effect watching lastDismissed)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
-      <div className="relative z-10 w-full max-w-md rounded-lg bg-card p-4 shadow-lg">
-        <div className="flex items-start gap-3">
-          <div className="text-2xl">📲</div>
-          <div className="flex-1">
-            <h3 className="text-lg font-bold">Install Pesa Tasks?</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Install the app for faster access, offline-like experience and instant launches.</p>
-            <div className="mt-4 flex gap-3">
-              <button onClick={handleInstall} className="inline-flex items-center rounded bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Install to your phone</button>
-              <button onClick={handleClose} className="inline-flex items-center rounded px-3 py-2 text-sm text-muted-foreground">Maybe later</button>
-            </div>
-            {showInstructions && (
-              <div className="mt-4 rounded border bg-muted/30 p-3 text-sm">
-                {isIOS ? (
-                  <div>
-                    <p className="font-semibold">iPhone / iPad installation</p>
-                    <p className="mt-1">Open this page in Safari. Tap the Share button and choose <strong>Add to Home Screen</strong>. This will install Pesa Tasks to your device.</p>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="font-semibold">Install on Android / Desktop</p>
-                    <p className="mt-1">If your browser supports it, you should see a prompt to install. Otherwise, use the browser menu and look for <strong>Install app</strong> or <strong>Add to desktop</strong>.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, premium = false }: { label: string; value: string; premium?: boolean }) {
-  return (
-    <div className={`rounded-lg px-3 py-2 text-center ${premium ? "bg-white/10 text-white" : "bg-muted/60"}`}>
-      <p className={`text-[11px] ${premium ? "text-white/60" : "text-muted-foreground"}`}>{label}</p>
-      <p className={`text-sm font-bold ${premium ? "text-[color:var(--vip-gold)]" : ""}`}>{value}</p>
     </div>
   );
 }
