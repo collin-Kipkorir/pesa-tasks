@@ -123,7 +123,13 @@ function DashboardInner() {
   const startTask = (s: Survey) => {
     if (s.category === "vip" && !user?.vip) { setUnlockOpen(true); return; }
     if (dailyLimitHit) {
-      toast.error(user?.vip ? `Daily limit reached: ${DAILY_VIP_LIMIT} surveys per day. Come back tomorrow!` : `Free users can complete ${DAILY_FREE_LIMIT} surveys per day. Unlock VIP for ${DAILY_VIP_LIMIT}/day.`);
+      // If the user is not VIP, prompt them to upgrade to VIP so they can continue.
+      if (!user?.vip) {
+        setUnlockOpen(true);
+        return;
+      }
+      // VIP users who hit their own limit still get informed to come back later.
+      toast.error(`Daily limit reached: ${DAILY_VIP_LIMIT} surveys per day. Come back tomorrow!`);
       return;
     }
     navigate(`/task/${s.id}`);
