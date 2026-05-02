@@ -371,10 +371,14 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount, context }: 
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-[image:var(--gradient-cta)] text-primary-foreground shadow-[var(--shadow-cta)]">
             <Smartphone className="h-7 w-7" />
           </div>
-          <DialogTitle className="text-center text-xl">{purposeLabel}</DialogTitle>
-          <DialogDescription className="text-center">
-            Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-PESA STK Push
-          </DialogDescription>
+          {purpose !== "vip" ? (
+            <>
+              <DialogTitle className="text-center text-xl">{purposeLabel}</DialogTitle>
+              <DialogDescription className="text-center">
+                Pay <span className="font-semibold text-foreground">KES {amount}</span> via M-PESA STK Push
+              </DialogDescription>
+            </>
+          ) : null}
 
           {/* VIP contextual banner - prominent, persuasive */}
           {purpose === "vip" && (
