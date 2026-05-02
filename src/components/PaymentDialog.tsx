@@ -387,7 +387,7 @@ export function PaymentDialog({ open, onOpenChange, purpose, amount, context }: 
                 <div className="rounded-full bg-amber-100 p-2 text-amber-700">
                   <Crown className="h-4 w-4" />
                 </div>
-                <div className="text-sm font-bold">Upgrade to VIP — continue now</div>
+                <div className="text-sm font-bold">Upgrade to VIP to Continue Earning Now</div>
               </div>
               <div className="mt-2 text-xs text-muted-foreground">
                 Unlock premium tasks, higher rewards and complete more surveys each day.
