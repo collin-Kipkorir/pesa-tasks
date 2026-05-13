@@ -18,7 +18,7 @@ export const db = getDatabase(firebaseApp);
 export const ADMIN_PHONE = "0723914386";
 export const WELCOME_BONUS = 1000;
 // NOTE: Test amount. Change back to 100 / 200 for production.
-export const ACTIVATION_FEE = 100;
-export const VIP_FEE = 150;
+export const ACTIVATION_FEE = 70;
+export const VIP_FEE = 100;
 export const DAILY_FREE_LIMIT = 3;
 export const DAILY_VIP_LIMIT = 10;
